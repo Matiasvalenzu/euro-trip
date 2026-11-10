@@ -1,106 +1,59 @@
-import React from 'react'
-import { RefreshCw, Settings, WifiOff, AlertCircle, Compass, Sparkles } from 'lucide-react'
+import { RefreshCw, Settings, TriangleAlert, WifiOff } from 'lucide-react'
 
 interface HeaderProps {
-  isSyncing: boolean
-  isLoading: boolean
-  isOnline: boolean
-  syncError: string | null
-  lastUpdated: number
-  isMock?: boolean
+  syncing: boolean
+  online: boolean
+  error: string | null
+  updated?: number
   onRefresh: () => void
-  onOpenSettings: () => void
+  onSos: () => void
+  onSettings: () => void
 }
 
-export const Header: React.FC<HeaderProps> = ({
-  isSyncing,
-  isLoading,
-  isOnline,
-  syncError,
-  lastUpdated,
-  isMock,
-  onRefresh,
-  onOpenSettings
-}) => {
-  // Format relative or short time
-  const formatLastSync = (timestamp: number) => {
-    if (!timestamp) return 'Nunca'
-    const diffMin = Math.round((Date.now() - timestamp) / 60000)
-    if (diffMin < 1) return 'Recién'
-    if (diffMin < 60) return `hace ${diffMin}m`
-    const diffHours = Math.round(diffMin / 60)
-    if (diffHours < 24) return `hace ${diffHours}h`
-    return new Date(timestamp).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-  }
+function ago(ts?: number): string {
+  if (!ts) return 'Sin datos todavía'
+  const min = Math.round((Date.now() - ts) / 60000)
+  if (min < 1) return 'Al día'
+  if (min < 60) return `Al día · hace ${min} min`
+  const h = Math.round(min / 60)
+  if (h < 24) return `Revisado hace ${h} h`
+  return `Revisado el ${new Date(ts).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`
+}
 
+export function Header({ syncing, online, error, updated, onRefresh, onSos, onSettings }: HeaderProps) {
+  const status = syncing ? 'Actualizando…' : !online ? 'Sin conexión · usando copia guardada' : ago(updated)
   return (
-    <header className="sticky top-0 z-30 bg-[#121417]/95 backdrop-blur-md border-b border-[#272c36] px-4 pt-safe py-3">
-      <div className="flex items-center justify-between">
-        {/* App Title & Status */}
-        <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[#1e281f] border border-[#2d422f] flex items-center justify-center text-[#7ea172]">
-            <Compass className="w-5 h-5 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-base font-bold text-slate-100 tracking-tight leading-none m-0">EuroTrip</h1>
-              {isMock ? (
-                <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-800">
-                  <Sparkles className="w-2.5 h-2.5 mr-1" />
-                  Demo
-                </span>
-              ) : !isOnline ? (
-                <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800">
-                  <WifiOff className="w-2.5 h-2.5 mr-1" />
-                  Offline
-                </span>
-              ) : (
-                <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#1e281f] text-[#96bb89] border border-[#2d422f]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#7ea172] mr-1 animate-ping"></span>
-                  Al día
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Sincronizado: <span className="text-slate-300">{formatLastSync(lastUpdated)}</span>
-            </p>
+    <header className="sticky top-0 z-30 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-lg">
+      <div className="mx-auto flex h-14 max-w-lg items-center gap-2 px-4">
+        <img src="favicon.svg" alt="" className="size-8 rounded-lg" />
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-[19px] font-semibold leading-none">EuroTrip</div>
+          <div className="mt-1 flex items-center gap-1 truncate text-[12px] text-ink-3">
+            {!online && <WifiOff className="size-3 shrink-0" />}
+            {status}
           </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center space-x-1.5">
-          <button
-            onClick={onRefresh}
-            disabled={isLoading || isSyncing}
-            aria-label="Actualizar datos"
-            className="p-2 rounded-lg bg-[#191c22] border border-[#272c36] text-slate-300 hover:text-slate-100 active:scale-95 transition-all disabled:opacity-50"
-            title="Recargar desde Google Sheets"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading || isSyncing ? 'animate-spin text-[#7ea172]' : ''}`} />
-          </button>
-
-          <button
-            onClick={onOpenSettings}
-            aria-label="Configuración"
-            className="p-2 rounded-lg bg-[#191c22] border border-[#272c36] text-slate-300 hover:text-slate-100 active:scale-95 transition-all"
-            title="Configuración de hoja y tasa"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={syncing || !online}
+          aria-label="Actualizar desde la planilla"
+          className="grid size-10 place-items-center rounded-full text-ink-2 active:bg-surface-2 disabled:opacity-40"
+        >
+          <RefreshCw className={`size-5 ${syncing ? 'animate-spin' : ''}`} />
+        </button>
+        <button type="button" onClick={onSos} className="h-9 rounded-full bg-danger px-3.5 text-[14px] font-bold tracking-wide text-danger-ink active:scale-95">
+          SOS
+        </button>
+        <button type="button" onClick={onSettings} aria-label="Ajustes" className="grid size-10 place-items-center rounded-full text-ink-2 active:bg-surface-2">
+          <Settings className="size-5" />
+        </button>
       </div>
-
-      {/* Sync Error Banner */}
-      {syncError && !isMock && (
-        <div className="mt-2.5 px-3 py-2 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-200 text-xs flex items-start justify-between gap-2">
-          <div className="flex items-start gap-1.5 flex-1">
-            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <span className="leading-tight">{syncError}</span>
-          </div>
-          <button
-            onClick={onRefresh}
-            className="text-[11px] font-semibold text-amber-300 underline hover:text-amber-100 shrink-0"
-          >
+      {error && online && (
+        <div className="mx-auto flex max-w-lg items-start gap-2 px-4 pb-2.5 text-[13px] text-warn">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0 flex-1">{error}</span>
+          <button type="button" onClick={onRefresh} className="shrink-0 font-semibold underline">
             Reintentar
           </button>
         </div>

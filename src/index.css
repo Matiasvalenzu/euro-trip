@@ -1,51 +1,109 @@
 @import "tailwindcss";
+@import "@fontsource-variable/fraunces/wght.css";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+
+  /* Claro: papel cálido + verde salvia */
+  --color-bg: #f4f2ec;
+  --color-surface: #ffffff;
+  --color-surface-2: #efece4;
+  --color-line: #e2ded3;
+  --color-ink: #1b1e22;
+  --color-ink-2: #545c66;
+  --color-ink-3: #7c838d;
+  --color-accent: #4a7740;
+  --color-accent-ink: #ffffff;
+  --color-accent-soft: #e2ebdc;
+  --color-plane: #2a66c6;
+  --color-plane-soft: #e0eaf9;
+  --color-train: #a8620e;
+  --color-train-soft: #f6e8d4;
+  --color-warn: #9c5a0c;
+  --color-warn-soft: #faecd6;
+  --color-danger: #c0392f;
+  --color-danger-ink: #ffffff;
+  --color-danger-soft: #f9e0de;
+  --color-ok: #2c7650;
+  --color-ok-soft: #dbeee3;
+
+  --animate-sheet: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade: fade-in 0.2s ease-out;
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to { transform: none; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+/* Oscuro: grafito + salvia (sigue la configuración del teléfono) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f1114;
+    --color-surface: #171a1f;
+    --color-surface-2: #20242b;
+    --color-line: #2b3038;
+    --color-ink: #eef1f4;
+    --color-ink-2: #aeb6c0;
+    --color-ink-3: #7f8792;
+    --color-accent: #98be8a;
+    --color-accent-ink: #0f1114;
+    --color-accent-soft: #1f2c1d;
+    --color-plane: #8bb9ff;
+    --color-plane-soft: #1a2638;
+    --color-train: #f0b562;
+    --color-train-soft: #30251a;
+    --color-warn: #f0b562;
+    --color-warn-soft: #30251a;
+    --color-danger: #ff7a70;
+    --color-danger-ink: #1c0a09;
+    --color-danger-soft: #3b1c1c;
+    --color-ok: #72d09e;
+    --color-ok-soft: #173126;
+  }
+}
 
 @layer base {
-  :root {
-    --bg-main: #121417;
-    --bg-card: #191c22;
-    --bg-card-hover: #21252d;
-    --border-color: #272c36;
-    --accent-sage: #7ea172;
-    --accent-sage-light: #96bb89;
-    --accent-sage-dark: #65845a;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --text-muted: #64748b;
+  html {
+    color-scheme: light dark;
+    -webkit-text-size-adjust: 100%;
   }
-
   body {
-    background-color: var(--bg-main);
-    color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    user-select: none;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
   }
+  button:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: #121417;
-}
-::-webkit-scrollbar-thumb {
-  background: #272c36;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #7ea172;
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-/* Safe area insets for mobile notched phones */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 1rem);
-}
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0.5rem);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

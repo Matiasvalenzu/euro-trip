@@ -1,128 +1,147 @@
-import React from 'react'
-import type { AccommodationItem } from '../../types/travel'
-import {
-  MapPin,
-  Phone,
-  ExternalLink,
-  Info,
-  Navigation
-} from 'lucide-react'
+import { useState } from 'react'
+import { BedDouble, ChevronDown, Coffee, ExternalLink, Info, Receipt, RotateCcw, Search } from 'lucide-react'
+import type { Stay, Trip } from '../../types/travel'
+import { countryOf } from '../../data/destinations'
+import { fmtShort } from '../../lib/dates'
+import { capitalize } from '../../lib/text'
+import { Card, Chip, CopyButton, Empty, Eyebrow, LinkButton, PageTitle, Row } from '../ui'
 
-interface AccommodationViewProps {
-  items: AccommodationItem[]
+function searchLinks(s: Stay) {
+  const q = encodeURIComponent(s.city.name)
+  return {
+    airbnb: `https://www.airbnb.com/s/${q}/homes?checkin=${s.checkIn}&checkout=${s.checkOut}&adults=2`,
+    booking: `https://www.booking.com/searchresults.html?ss=${q}&checkin=${s.checkIn}&checkout=${s.checkOut}&group_adults=2&no_rooms=1`,
+  }
 }
 
-export const AccommodationView: React.FC<AccommodationViewProps> = ({ items }) => {
+function StayCard({ stay }: { stay: Stay }) {
+  const [showOptions, setShowOptions] = useState(false)
+  const l = stay.lodging
+  const country = countryOf(stay.city)
+  const links = searchLinks(stay)
+  const status = l ? (l.confirmed ? { tone: 'ok' as const, text: 'Reservado' } : { tone: 'warn' as const, text: l.status }) : { tone: 'danger' as const, text: 'Sin reserva' }
+
   return (
-    <div className="space-y-4 pb-24 px-4 pt-3 max-w-md mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-100 m-0">Alojamientos y Hostels</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Direcciones, check-ins y teléfonos</p>
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Eyebrow>
+            {country?.flag} {country?.name}
+          </Eyebrow>
+          <h2 className="mt-0.5 font-display text-[30px] font-semibold leading-tight">{stay.city.name}</h2>
+          <p className="mt-0.5 text-[14px] text-ink-2">
+            {fmtShort(stay.checkIn)} → {fmtShort(stay.checkOut)} · {stay.nights} {stay.nights === 1 ? 'noche' : 'noches'}
+          </p>
         </div>
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#1e281f] text-[#96bb89] border border-[#2d422f]">
-          {items.length} lugares
-        </span>
+        <Chip tone={status.tone} className="mt-1 shrink-0">
+          {status.text}
+        </Chip>
       </div>
 
-      {items.length === 0 ? (
-        <div className="p-8 rounded-2xl bg-[#191c22] border border-[#272c36] text-center text-slate-400 text-xs">
-          No hay alojamientos registrados en la pestaña "Alojamiento".
-        </div>
+      {l ? (
+        <>
+          <div className="mt-4 text-[17px] font-semibold leading-snug">{l.name}</div>
+          <div className="mt-1 divide-y divide-line">
+            {l.price && (
+              <Row icon={<Receipt className="size-4" />} label="Total">
+                <span className="flex flex-wrap items-center gap-2">
+                  {l.price}
+                  {l.paid && <Chip tone="ok">Pagado</Chip>}
+                </span>
+              </Row>
+            )}
+            {l.code && (
+              <Row icon={<BedDouble className="size-4" />} label="Código de reserva">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[15px] font-semibold tracking-wide">{l.code}</span>
+                  <CopyButton text={l.code} />
+                </span>
+              </Row>
+            )}
+            {l.refund && (
+              <Row icon={<RotateCcw className="size-4" />} label="Cancelación">
+                {l.refund}
+              </Row>
+            )}
+            {l.breakfast && (
+              <Row icon={<Coffee className="size-4" />} label="Desayuno">
+                {capitalize(l.breakfast.replace(/^desayuno\s*/i, ''))}
+              </Row>
+            )}
+            {stay.notes.filter((n) => !/^misma reserva/i.test(n)).map((n, i) => (
+              <Row key={i} icon={<Info className="size-4" />} label="Nota">
+                {n}
+              </Row>
+            ))}
+          </div>
+          {l.url && (
+            <LinkButton href={l.url} primary className="mt-3 w-full">
+              Abrir la reserva
+            </LinkButton>
+          )}
+          {l.options.length > 0 && (
+            <div className="mt-3">
+              <button type="button" onClick={() => setShowOptions(!showOptions)} aria-expanded={showOptions} className="flex w-full items-center justify-between py-1 text-[14px] font-semibold text-accent">
+                Otras opciones revisadas ({l.options.length})
+                <ChevronDown className={`size-4 transition-transform ${showOptions ? 'rotate-180' : ''}`} />
+              </button>
+              {showOptions && (
+                <ul className="mt-2 space-y-2">
+                  {l.options.map((o, i) => (
+                    <li key={i} className="rounded-xl bg-surface-2 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-[15px] font-semibold leading-snug">{o.name}</span>
+                        {o.url && (
+                          <a href={o.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${o.name}`} className="shrink-0 p-0.5 text-accent">
+                            <ExternalLink className="size-4" />
+                          </a>
+                        )}
+                      </div>
+                      {o.detail && <p className="mt-1 text-[13px] leading-snug text-ink-2 break-words">{o.detail}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="space-y-4">
-          {items.map((al) => {
-            const mapQuery = encodeURIComponent(`${al.nombre} ${al.direccion} ${al.ciudad}`)
-            const cleanPhone = (al.telefono || '').replace(/[^0-9+]/g, '')
+        <>
+          <p className="mt-3 text-[14px] text-ink-2">Todavía no hay alojamiento en la planilla para estas noches.</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <LinkButton href={links.airbnb} icon={<Search className="size-4" />}>
+              Airbnb
+            </LinkButton>
+            <LinkButton href={links.booking} icon={<Search className="size-4" />}>
+              Booking
+            </LinkButton>
+          </div>
+        </>
+      )}
+    </Card>
+  )
+}
 
-            return (
-              <div
-                key={al.id}
-                className="p-4 rounded-2xl bg-[#191c22] border border-[#272c36] hover:border-slate-600 transition-all shadow-sm space-y-3"
-              >
-                {/* Header: City badge & price */}
-                <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-950/70 text-purple-300 border border-purple-800/50">
-                    <MapPin className="w-2.5 h-2.5 mr-1" />
-                    {al.ciudad}
-                  </span>
+export function AccommodationView({ trip }: { trip: Trip }) {
+  const nights = trip.stays.reduce((a, s) => a + s.nights, 0)
+  const confirmed = trip.stays.filter((s) => s.lodging?.confirmed).length
+  const transit = trip.days.filter((d) => !d.sleep)
 
-                  {al.costoNoche && (
-                    <span className="text-xs font-semibold text-slate-300 bg-[#222630] px-2 py-0.5 rounded-md">
-                      {al.costoNoche} <span className="text-[10px] text-slate-400 font-normal">/noche</span>
-                    </span>
-                  )}
-                </div>
-
-                {/* Hotel Name & Address */}
-                <div>
-                  <h3 className="text-base font-bold text-slate-100 leading-snug m-0">
-                    {al.nombre}
-                  </h3>
-                  <div className="text-xs text-slate-400 mt-1 flex items-start gap-1 leading-relaxed">
-                    <span>{al.direccion}</span>
-                  </div>
-                </div>
-
-                {/* Check-in & Check-out row */}
-                <div className="p-3 rounded-xl bg-[#121417] border border-[#222630] grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Check-in</span>
-                    <span className="font-semibold text-slate-200 mt-0.5 block">{al.checkIn || 'Por confirmar'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Check-out</span>
-                    <span className="font-semibold text-slate-200 mt-0.5 block">{al.checkOut || 'Por confirmar'}</span>
-                  </div>
-                </div>
-
-                {/* Notes (WiFi, door code, luggage, tax) */}
-                {al.notas && (
-                  <div className="p-2.5 rounded-xl bg-[#121417] border border-[#222630] text-xs text-slate-300 flex items-start gap-2">
-                    <Info className="w-3.5 h-3.5 text-[#7ea172] shrink-0 mt-0.5" />
-                    <p className="text-[11px] leading-relaxed">{al.notas}</p>
-                  </div>
-                )}
-
-                {/* Action buttons: Google Maps, Phone, Link */}
-                <div className="flex items-center space-x-2 pt-1">
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-2 px-3 rounded-xl bg-[#1e281f] hover:bg-[#28392a] text-[#96bb89] border border-[#2d422f] text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                  >
-                    <Navigation className="w-3.5 h-3.5" />
-                    Cómo llegar (Maps)
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-
-                  {cleanPhone && (
-                    <a
-                      href={`tel:${cleanPhone}`}
-                      className="p-2 rounded-xl bg-[#222630] hover:bg-[#2c3240] text-slate-200 border border-[#272c36] text-xs flex items-center justify-center active:scale-95 transition-all"
-                      title={`Llamar a ${al.nombre}`}
-                    >
-                      <Phone className="w-4 h-4 text-emerald-400" />
-                    </a>
-                  )}
-
-                  {al.linkReserva && (
-                    <a
-                      href={al.linkReserva}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-xl bg-[#222630] hover:bg-[#2c3240] text-slate-200 border border-[#272c36] text-xs flex items-center justify-center active:scale-95 transition-all"
-                      title="Abrir reserva"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+  return (
+    <div className="space-y-4">
+      <PageTitle
+        title="Estadías"
+        subtitle={`${nights} noches en ${trip.stays.length} ciudades · ${confirmed} de ${trip.stays.length} reservadas`}
+      />
+      {trip.stays.length === 0 ? (
+        <Empty icon={<BedDouble className="size-6" />} title="Sin estadías" />
+      ) : (
+        trip.stays.map((s) => <StayCard key={s.id} stay={s} />)
+      )}
+      {transit.length > 0 && (
+        <p className="px-1 text-[13px] text-ink-3">
+          Noches en el avión: {transit.map((d) => fmtShort(d.date)).join(' y ')}.
+        </p>
       )}
     </div>
   )

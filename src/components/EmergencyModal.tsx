@@ -1,170 +1,179 @@
-import React, { useState } from 'react'
-import type { EmergencyItem } from '../types/travel'
-import { X, Phone, ShieldAlert, Copy, Check, AlertTriangle, ExternalLink } from 'lucide-react'
+import { useState } from 'react'
+import { BedDouble, ExternalLink, Landmark, Phone, Plus, Trash, UserRound } from 'lucide-react'
+import type { Day, Trip } from '../types/travel'
+import { COUNTRIES, CITIES, countryOf, type CountryCode } from '../data/destinations'
+import { useStored } from '../hooks/useStored'
+import { Button, Card, CopyButton, Eyebrow, Sheet } from './ui'
 
-interface EmergencyModalProps {
-  isOpen: boolean
-  onClose: () => void
-  emergencies: EmergencyItem[]
+interface Contact {
+  id: string
+  name: string
+  phone: string
+  note: string
 }
 
-export const EmergencyModal: React.FC<EmergencyModalProps> = ({ isOpen, onClose, emergencies }) => {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
+const tel = (n: string) => `tel:${n.replace(/[^0-9+]/g, '')}`
 
-  if (!isOpen) return null
+export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; onClose: () => void; trip: Trip | null; day?: Day }) {
+  const ref = day && (day.excursion ?? (day.city.key === 'santiago' ? (day.to?.key !== 'santiago' ? day.to : day.from) : day.city))
+  const current = countryOf(ref)?.code ?? 'NL'
+  const [picked, setPicked] = useState<CountryCode | null>(null)
+  const code = picked ?? current
+  const country = COUNTRIES[code]
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
-  }
+  const codes = trip
+    ? ([...new Set(trip.days.flatMap((d) => [d.city, d.excursion].map((r) => (r?.key ? CITIES[r.key].country : null))))].filter((c) => c && c !== 'CL') as CountryCode[])
+    : []
 
-  // Sanitize phone number for tel: links
-  const getCleanPhone = (val: string) => {
-    return val.replace(/[^0-9+]/g, '')
+  const stay = day && trip?.stays.find((s) => s.dayIndexes.includes(day.index))
+
+  const [contacts, setContacts] = useStored<Contact[]>('eurotrip_contactos_v1', [])
+  const [form, setForm] = useState({ name: '', phone: '', note: '' })
+  const [adding, setAdding] = useState(false)
+  const add = () => {
+    if (!form.name.trim() || !form.phone.trim()) return
+    setContacts((p) => [...p, { id: `${Date.now()}`, name: form.name.trim(), phone: form.phone.trim(), note: form.note.trim() }])
+    setForm({ name: '', phone: '', note: '' })
+    setAdding(false)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm transition-opacity">
-      <div
-        className="w-full max-w-md bg-[#16181e] border-t sm:border border-red-900/40 rounded-t-3xl sm:rounded-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200"
-        role="dialog"
-      >
-        {/* Header */}
-        <div className="px-5 py-4 bg-gradient-to-r from-red-950/80 to-[#191c22] border-b border-red-900/30 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 rounded-xl bg-red-600 text-white shadow-md shadow-red-900/50">
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-100 m-0 leading-tight">Emergencias y Auxilio</h2>
-              <p className="text-xs text-red-300 font-medium mt-0.5">Contactos rápidos en caso de urgencia</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar modal"
-            className="p-1.5 rounded-lg bg-[#222630] text-slate-400 hover:text-slate-100 active:scale-95 transition-all"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Sheet open={open} onClose={onClose} label="Emergencias">
+      <div className="pt-6">
+        <h2 className="font-display text-[30px] font-semibold">Emergencias</h2>
 
-        {/* Content */}
-        <div className="p-4 overflow-y-auto space-y-3.5 flex-1 pb-8">
-          {/* 112 Universal Call Banner */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-red-900/70 via-red-950/80 to-[#1a1c22] border border-red-500/40 text-slate-100 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-red-300 bg-red-950/90 px-2 py-0.5 rounded-full border border-red-700/60">
-                  Universal en toda la UE
-                </span>
-                <h3 className="text-2xl font-black text-white mt-1 mb-0 tracking-tight">112 Emergencias</h3>
-                <p className="text-xs text-red-200 mt-1 max-w-[220px]">
-                  Policía, ambulancia y bomberos. Funciona gratis y sin saldo en cualquier teléfono.
-                </p>
-              </div>
-              <a
-                href="tel:112"
-                className="flex items-center justify-center w-14 h-14 rounded-2xl bg-red-500 hover:bg-red-400 text-white shadow-lg shadow-red-600/50 active:scale-90 transition-all font-bold"
-                title="Llamar al 112"
+        <a href="tel:112" className="mt-3 flex items-center justify-between gap-4 rounded-3xl bg-danger p-5 text-danger-ink active:scale-[0.99]">
+          <div>
+            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] opacity-85">Toda la Unión Europea</div>
+            <div className="font-display text-[44px] font-semibold leading-none">112</div>
+            <div className="mt-1.5 text-[14px] opacity-90">Policía, ambulancia y bomberos. Gratis, sin saldo y en inglés.</div>
+          </div>
+          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/20">
+            <Phone className="size-7" />
+          </span>
+        </a>
+
+        {codes.length > 0 && (
+          <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 no-scrollbar">
+            {codes.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-pressed={c === code}
+                onClick={() => setPicked(c)}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-[14px] font-semibold ${c === code ? 'bg-ink text-bg' : 'border border-line bg-surface text-ink-2'}`}
               >
-                <Phone className="w-6 h-6 animate-pulse" />
+                {COUNTRIES[c].flag} {COUNTRIES[c].name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Card className="mt-3 divide-y divide-line">
+          {country.emergency
+            .filter((e) => e.number !== '112')
+            .map((e) => (
+              <a key={e.number} href={tel(e.number)} className="flex items-center justify-between px-4 py-3">
+                <span className="text-[15px]">{e.label}</span>
+                <span className="flex items-center gap-2 text-[18px] font-semibold text-accent tabular-nums">
+                  {e.number}
+                  <Phone className="size-4" />
+                </span>
               </a>
+            ))}
+          {country.consulate && (
+            <a href={country.consulate.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3">
+              <Landmark className="size-5 shrink-0 text-ink-3" />
+              <span className="min-w-0 flex-1 text-[15px]">{country.consulate.label}</span>
+              <ExternalLink className="size-4 text-ink-3" />
+            </a>
+          )}
+        </Card>
+
+        {stay && (
+          <Card className="mt-3 flex items-start gap-3 p-4">
+            <BedDouble className="mt-0.5 size-5 shrink-0 text-ink-3" />
+            <div className="min-w-0 flex-1">
+              <Eyebrow>Dónde duermen esta noche</Eyebrow>
+              <div className="mt-0.5 text-[15px] font-semibold">{stay.lodging?.name ?? `${stay.city.name} (sin reserva registrada)`}</div>
+              {stay.lodging?.url && (
+                <a href={stay.lodging.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[14px] font-semibold text-accent">
+                  Ver dirección en la reserva
+                </a>
+              )}
             </div>
-          </div>
+          </Card>
+        )}
 
-          {/* List of custom emergency contacts from Google Sheets */}
-          <div className="space-y-2.5">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
-              Contactos y Seguros Registrados
-            </h4>
-
-            {emergencies.length === 0 ? (
-              <div className="p-4 rounded-xl bg-[#191c22] border border-[#272c36] text-center text-slate-400 text-xs">
-                No hay contactos de emergencia registrados en la hoja de cálculo.
-              </div>
-            ) : (
-              emergencies.map((item) => {
-                const cleanPhone = getCleanPhone(item.valor)
-                const isPhone = cleanPhone.length >= 3 && /^[+0-9]/.test(item.valor.trim())
-                const isUrl = item.valor.startsWith('http://') || item.valor.startsWith('https://')
-
-                return (
-                  <div
-                    key={item.id}
-                    className="p-3.5 rounded-xl bg-[#191c22] border border-[#272c36] hover:border-slate-600 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <span className="inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#252a36] text-slate-300 mb-1">
-                          {item.tipo || 'Emergencia'}
-                        </span>
-                        <div className="text-sm font-bold text-slate-100 truncate">
-                          {item.nombre || item.tipo}
-                        </div>
-                        <div className="text-xs font-mono font-semibold text-[#96bb89] mt-0.5 select-all break-all">
-                          {item.valor}
-                        </div>
-                        {item.notas && (
-                          <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                            {item.notas}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex items-center space-x-1.5 shrink-0 pt-1">
-                        <button
-                          onClick={() => handleCopy(item.id, item.valor)}
-                          className="p-2 rounded-lg bg-[#222630] hover:bg-[#2c3240] text-slate-300 hover:text-white transition-all active:scale-95"
-                          title="Copiar dato"
-                        >
-                          {copiedId === item.id ? (
-                            <Check className="w-4 h-4 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
-                        </button>
-
-                        {isPhone && (
-                          <a
-                            href={`tel:${cleanPhone}`}
-                            className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-all active:scale-95 flex items-center justify-center shadow-md shadow-emerald-900/40"
-                            title="Llamar"
-                          >
-                            <Phone className="w-4 h-4" />
-                          </a>
-                        )}
-
-                        {isUrl && (
-                          <a
-                            href={item.valor}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all active:scale-95"
-                            title="Abrir enlace"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
+        <div className="mt-5">
+          <Eyebrow className="px-1">Mis contactos</Eyebrow>
+          <Card className="mt-2 divide-y divide-line">
+            {contacts.length === 0 && !adding && (
+              <p className="px-4 py-3 text-[14px] text-ink-2">Guarda acá la asistencia del seguro, el número internacional del banco y un contacto familiar.</p>
             )}
-          </div>
-
-          {/* Quick Travel Advice */}
-          <div className="p-3 rounded-xl bg-[#191c22]/60 border border-[#272c36] text-slate-400 text-xs flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              En caso de pérdida o robo de pasaporte chileno, acude al Consulado de Chile más cercano con una copia digital de tu cédula y la denuncia policial local.
-            </p>
-          </div>
+            {contacts.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+                <UserRound className="size-5 shrink-0 text-ink-3" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[15px] font-semibold">{c.name}</div>
+                  <div className="text-[14px] tabular-nums text-ink-2">{c.phone}</div>
+                  {c.note && <div className="text-[13px] text-ink-3">{c.note}</div>}
+                </div>
+                <CopyButton text={c.phone} />
+                <a href={tel(c.phone)} aria-label={`Llamar a ${c.name}`} className="grid size-10 place-items-center rounded-full bg-ok-soft text-ok">
+                  <Phone className="size-4" />
+                </a>
+                <button
+                  type="button"
+                  aria-label={`Borrar ${c.name}`}
+                  onClick={() => confirm(`¿Borrar ${c.name}?`) && setContacts((p) => p.filter((x) => x.id !== c.id))}
+                  className="p-1 text-ink-3"
+                >
+                  <Trash className="size-4" />
+                </button>
+              </div>
+            ))}
+            {adding && (
+              <div className="space-y-2 p-3">
+                {(['name', 'phone', 'note'] as const).map((f) => (
+                  <input
+                    key={f}
+                    value={form[f]}
+                    onChange={(e) => setForm({ ...form, [f]: e.target.value })}
+                    placeholder={f === 'name' ? 'Nombre (ej. Seguro de viaje)' : f === 'phone' ? 'Teléfono con código de país' : 'Nota (n° de póliza, etc.)'}
+                    inputMode={f === 'phone' ? 'tel' : undefined}
+                    aria-label={f}
+                    className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[16px] outline-none focus:border-accent"
+                  />
+                ))}
+                <div className="flex justify-end gap-2">
+                  <Button onClick={() => setAdding(false)}>Cancelar</Button>
+                  <Button primary onClick={add}>
+                    Guardar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+          {!adding && (
+            <Button onClick={() => setAdding(true)} icon={<Plus className="size-4" />} className="mt-2 w-full">
+              Agregar contacto
+            </Button>
+          )}
+          <p className="mt-1.5 px-1 text-[12px] text-ink-3">Se guardan solo en este teléfono.</p>
         </div>
+
+        <Card className="mt-5 p-4">
+          <Eyebrow>Si pierden el pasaporte</Eyebrow>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[14px] leading-snug">
+            <li>Hagan la denuncia en la policía local y pidan una copia.</li>
+            <li>Contacten al consulado de Chile del país para el documento de viaje de emergencia.</li>
+            <li>Lleven la copia digital del pasaporte y la cédula.</li>
+          </ol>
+          <Eyebrow className="mt-4">Si roban una tarjeta</Eyebrow>
+          <p className="mt-2 text-[14px] leading-snug">Bloquéenla al tiro desde la app del banco y llamen al número internacional del emisor (guárdenlo en Mis contactos).</p>
+        </Card>
       </div>
-    </div>
+    </Sheet>
   )
 }

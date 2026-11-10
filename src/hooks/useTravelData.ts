@@ -1,122 +1,58 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { TravelData } from '../types/travel'
-import {
-  fetchAllTravelData,
-  getStoredExchangeRate,
-  getStoredSheetId,
-  isForceMock,
-  loadCachedData,
-  saveCachedData,
-  setStoredExchangeRate,
-  setStoredSheetId,
-  setForceMock
-} from '../services/gsheets'
-import { DEFAULT_MOCK_DATA } from '../services/mockData'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CachedRows } from '../services/gsheets'
+import { fetchRows, getSheetId, loadCachedRows, setSheetId } from '../services/gsheets'
+import { buildTrip } from '../lib/parseTrip'
 
-export function useTravelData() {
-  const [sheetId, setSheetIdState] = useState<string>(getStoredSheetId())
-  const [exchangeRate, setExchangeRateState] = useState<number>(getStoredExchangeRate())
-  const [useMock, setUseMockState] = useState<boolean>(isForceMock())
+/** Itinerario desde Google Sheets, con copia local para usar sin conexión. */
+export function useTrip() {
+  const [sheetId, setSheetIdState] = useState(getSheetId)
+  const [cached, setCached] = useState<CachedRows | null>(loadCachedRows)
+  const [syncing, setSyncing] = useState(() => navigator.onLine)
+  const [error, setError] = useState<string | null>(null)
+  const [online, setOnline] = useState(navigator.onLine)
 
-  // Initial data: cached data if available, otherwise mock data
-  const [data, setData] = useState<TravelData>(() => {
-    const cached = loadCachedData()
-    if (cached) return cached
-    return DEFAULT_MOCK_DATA
-  })
-
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [isSyncing, setIsSyncing] = useState<boolean>(false)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine)
-
-  // Listen to network status
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
+    const on = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
     return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', on)
+      window.removeEventListener('offline', off)
     }
   }, [])
 
-  // Sync data function
-  const refreshData = useCallback(async (isManual: boolean = false) => {
-    if (useMock) {
-      setData({ ...DEFAULT_MOCK_DATA, lastUpdated: Date.now() })
-      setSyncError(null)
-      return
-    }
-
-    if (!navigator.onLine) {
-      setSyncError('Sin conexión a internet. Mostrando copia guardada en el dispositivo.')
-      return
-    }
-
-    if (isManual) {
-      setIsLoading(true)
-    } else {
-      setIsSyncing(true)
-    }
-    setSyncError(null)
-
+  const load = useCallback(async () => {
     try {
-      const fresh = await fetchAllTravelData(sheetId)
-      setData(fresh)
-      saveCachedData(fresh)
-      setSyncError(null)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al sincronizar con Google Sheets'
-      console.warn('Sync failed:', msg)
-      setSyncError(msg)
-      // If we don't have any data yet, ensure mock is displayed
-      if (!data || data.itinerario.length === 0) {
-        setData(DEFAULT_MOCK_DATA)
-      }
+      const data = await fetchRows(sheetId)
+      setCached(data)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo leer la planilla.')
     } finally {
-      setIsLoading(false)
-      setIsSyncing(false)
+      setSyncing(false)
     }
-  }, [sheetId, useMock, data])
+  }, [sheetId])
 
-  // Run initial background sync
+  // Descarga al abrir, al cambiar de planilla y al recuperar la conexión.
+  // `load` solo actualiza estado después de la respuesta de red.
   useEffect(() => {
-    refreshData(false)
-  }, [sheetId, useMock])
+    // oxlint-disable-next-line react/set-state-in-effect
+    if (online) load()
+  }, [online, load])
 
-  // Sheet ID updater
-  const updateSheetId = (newId: string) => {
-    setStoredSheetId(newId)
-    setSheetIdState(getStoredSheetId())
+  const refresh = useCallback(() => {
+    if (!navigator.onLine) return
+    setSyncing(true)
+    load()
+  }, [load])
+
+  const trip = useMemo(() => (cached ? buildTrip(cached.rows) : null), [cached])
+
+  const changeSheet = (input: string) => {
+    setSyncing(true)
+    setSheetIdState(setSheetId(input))
   }
 
-  // Exchange rate updater
-  const updateExchangeRate = (newRate: number) => {
-    setStoredExchangeRate(newRate)
-    setExchangeRateState(newRate)
-  }
-
-  // Toggle mock mode
-  const toggleMockMode = (val: boolean) => {
-    setForceMock(val)
-    setUseMockState(val)
-  }
-
-  return {
-    data,
-    sheetId,
-    exchangeRate,
-    useMock,
-    isLoading,
-    isSyncing,
-    syncError,
-    isOnline,
-    refreshData: () => refreshData(true),
-    updateSheetId,
-    updateExchangeRate,
-    toggleMockMode
-  }
+  return { trip, updated: cached?.updated, syncing, error, online, refresh, sheetId, changeSheet }
 }

@@ -1,311 +1,231 @@
-import React, { useState } from 'react'
-import type { TravelData, TabType } from '../../types/travel'
-import {
-  Calendar,
-  Clock,
-  MapPin,
-  Plane,
-  Building2,
-  ChevronRight,
-  Compass,
-  ArrowRight,
-  Sparkles,
-  Ticket
-} from 'lucide-react'
+import { useState } from 'react'
+import { ChevronLeft, ChevronRight, Clock, Coins, Languages, ListChecks, Phone, Plug } from 'lucide-react'
+import type { Leg, Place, Rates, TabType, Trip } from '../../types/travel'
+import { forecastFor, wxLabel, type Forecast } from '../../services/weather'
+import { CITIES, COUNTRIES, countryOf, flagOf } from '../../data/destinations'
+import { daysBetween, fmtLong, fmtRange, fmtShort, hoursAhead, timeIn, todayIso } from '../../lib/dates'
+import { convert, fmtMoney } from '../../lib/money'
+import { useNow } from '../../hooks/useStored'
+import { Checklist } from '../Checklist'
+import { DayBody, WxIcon } from '../DayParts'
+import { LegCard } from '../LegCard'
+import { Card, Eyebrow, Row, SectionTitle } from '../ui'
 
-interface TodayViewProps {
-  data: TravelData
-  onNavigateTab: (tab: TabType) => void
+interface Props {
+  trip: Trip
+  forecast: Forecast
+  rates: Rates
+  onPlace: (p: Place, date: string) => void
+  onLeg: (l: Leg) => void
+  onCity: (key: string) => void
+  onTab: (t: TabType) => void
 }
 
-export const TodayView: React.FC<TodayViewProps> = ({ data, onNavigateTab }) => {
-  // Normalize date helper
-  const toStandardDate = (d: string) => {
-    if (!d) return ''
-    if (d.includes('/')) {
-      const parts = d.split('/')
-      if (parts.length === 3) {
-        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
-      }
-    }
-    return d.trim()
-  }
+export function TodayView({ trip, forecast, rates, onPlace, onLeg, onCity, onTab }: Props) {
+  const today = todayIso()
+  const now = useNow()
+  const phase = today < trip.start ? 'before' : today > trip.end ? 'after' : 'during'
+  const todayIdx = trip.days.findIndex((d) => d.date === today)
+  const [idx, setIdx] = useState(phase === 'before' ? 0 : todayIdx >= 0 ? todayIdx : trip.days.length - 1)
+  const day = trip.days[Math.min(idx, trip.days.length - 1)]
 
-  // Get current device date in YYYY-MM-DD
-  const todayStr = new Date().toISOString().split('T')[0]
+  // Ciudad europea de referencia (los días de vuelo desde/hacia Santiago usan la otra punta).
+  const euroRef = day.excursion ?? (day.city.key === 'santiago' ? (day.to?.key !== 'santiago' ? day.to : day.from) : day.city)
+  const euroCity = euroRef?.key ? CITIES[euroRef.key] : undefined
+  const country = countryOf(euroRef) ?? COUNTRIES.NL
+  const tz = euroCity?.tz ?? 'Europe/Paris'
+  const ahead = hoursAhead(tz, 'America/Santiago', now)
+  const wx = forecastFor(day, forecast)
+  const firstLeg = trip.legs[0]
+  const nextLeg = phase === 'during' ? trip.legs.find((l) => l.date > day.date && !l.optional) : undefined
+  const daysLeft = daysBetween(today, trip.start)
+  const isToday = day.date === today
 
-  // All distinct dates sorted
-  const allDates = Array.from(new Set(data.itinerario.map((i) => toStandardDate(i.fecha)))).filter(Boolean).sort()
-  const firstTripDate = allDates[0] || todayStr
-  const lastTripDate = allDates[allDates.length - 1] || todayStr
-
-  // Selected date (defaults to today if in range, otherwise first trip date or user selection)
-  const isTodayInRange = todayStr >= firstTripDate && todayStr <= lastTripDate
-  const [selectedDate, setSelectedDate] = useState<string>(isTodayInRange ? todayStr : firstTripDate)
-
-  // Current active date items
-  const todayItinerary = data.itinerario.filter((item) => toStandardDate(item.fecha) === selectedDate)
-  const todayTransport = data.transporte.filter((item) => toStandardDate(item.fecha) === selectedDate)
-  const todayAccommodation = data.alojamiento.find((item) => {
-    const cin = toStandardDate(item.checkIn)
-    const cout = toStandardDate(item.checkOut)
-    return selectedDate >= cin && selectedDate <= cout
-  })
-
-  // Format readable Chilean date
-  const formatReadableDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    const [y, m, d] = dateStr.split('-').map(Number)
-    if (!y || !m || !d) return dateStr
-    const dateObj = new Date(y, m - 1, d)
-    return dateObj.toLocaleDateString('es-CL', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long'
-    })
-  }
-
-  // Current city
-  const currentCity = todayItinerary[0]?.ciudad || todayAccommodation?.ciudad || todayTransport[0]?.destino || 'Europa'
-
-  // Calculate days difference
-  const getDaysDiff = (targetDateStr: string) => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const [y, m, d] = targetDateStr.split('-').map(Number)
-    const target = new Date(y, m - 1, d)
-    const diffTime = target.getTime() - today.getTime()
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  }
-
-  const daysUntilTrip = getDaysDiff(firstTripDate)
+  const local = country.currency === 'HUF' ? 1000 : 1
+  const essentials = country.emergency.filter((e) => e.number !== '112').slice(0, 2)
+  const thanks = country.phrases.find((p) => p[0] === 'Gracias')
 
   return (
-    <div className="space-y-4 pb-24 px-4 pt-3 max-w-md mx-auto">
-      {/* Pre-trip Countdown or Status banner */}
-      {daysUntilTrip > 0 ? (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#191c22] via-[#1e251f] to-[#191c22] border border-[#2d422f] shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#96bb89] bg-[#1e281f] px-2 py-0.5 rounded-full border border-[#2d422f]">
-                Cuenta Regresiva
-              </span>
-              <h2 className="text-xl font-bold text-white mt-1.5 leading-tight">
-                ¡Faltan {daysUntilTrip} {daysUntilTrip === 1 ? 'día' : 'días'} para el viaje!
-              </h2>
-              <p className="text-xs text-slate-300 mt-1">
-                Comienza el {formatReadableDate(firstTripDate)} en {data.itinerario[0]?.ciudad || 'Europa'}.
+    <div className="space-y-5">
+      {phase === 'before' && (
+        <>
+          <div className="rounded-3xl bg-accent p-5 text-accent-ink">
+            <div className="text-[13px] font-semibold uppercase tracking-[0.1em] opacity-80">Cuenta regresiva</div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="font-display text-[68px] font-semibold leading-none tabular-nums">{daysLeft}</span>
+              <span className="text-[22px] font-semibold">{daysLeft === 1 ? 'día' : 'días'}</span>
+            </div>
+            {firstLeg && (
+              <p className="mt-3 text-[15px] leading-snug opacity-90">
+                Salen el {fmtLong(firstLeg.date)}
+                {firstLeg.depart ? ` a las ${firstLeg.depart}` : ''} desde {firstLeg.from.name}. Primera parada: {firstLeg.to.name}.
               </p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-[#7ea172]/20 border border-[#7ea172]/40 flex items-center justify-center text-[#7ea172] shrink-0">
-              <Calendar className="w-6 h-6" />
-            </div>
+            )}
           </div>
-        </div>
-      ) : daysUntilTrip === 0 ? (
-        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-[#191c22] border border-emerald-700/50 text-white flex items-center justify-between shadow-lg">
-          <div className="flex items-center space-x-2.5">
-            <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
-            <div>
-              <div className="text-sm font-bold">¡El viaje comienza hoy!</div>
-              <div className="text-xs text-emerald-200">Disfruta cada momento en {currentCity}.</div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
-      {/* Hero City & Date Card */}
-      <div className="p-4 rounded-2xl bg-[#191c22] border border-[#272c36] shadow-md relative overflow-hidden">
-        <div className="flex items-start justify-between">
           <div>
-            <div className="flex items-center space-x-1.5 text-[#96bb89] text-xs font-semibold uppercase tracking-wider">
-              <MapPin className="w-3.5 h-3.5" />
-              <span>Ciudad actual / destino</span>
-            </div>
-            <h1 className="text-2xl font-black text-slate-100 tracking-tight mt-0.5 mb-0">
-              {currentCity}
-            </h1>
-            <p className="text-xs text-slate-400 capitalize mt-1">
-              {formatReadableDate(selectedDate)}
-            </p>
-          </div>
-
-          <div className="text-right">
-            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#222630] text-slate-300 border border-slate-700">
-              {todayItinerary.length} {todayItinerary.length === 1 ? 'actividad' : 'actividades'}
-            </span>
-          </div>
-        </div>
-
-        {/* Quick Date Selector Picker */}
-        {allDates.length > 1 && (
-          <div className="mt-3 pt-3 border-t border-[#272c36] flex items-center justify-between">
-            <span className="text-[11px] text-slate-400 font-medium">Ver otro día:</span>
-            <select
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-[#121417] text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-[#272c36] focus:outline-none focus:border-[#7ea172]"
-            >
-              {allDates.map((d, index) => (
-                <option key={d} value={d}>
-                  Día {index + 1} ({d})
-                </option>
+            <SectionTitle>La ruta</SectionTitle>
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar">
+              {trip.stays.map((s) => (
+                <button key={s.id} type="button" onClick={() => s.city.key && onCity(s.city.key)} className="shrink-0 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left">
+                  <div className="text-[12px] text-ink-3">
+                    {flagOf(s.city)} {fmtRange(s.checkIn, s.checkOut)}
+                  </div>
+                  <div className="font-display text-[19px] font-semibold leading-tight">{s.city.name}</div>
+                  <div className="text-[12px] text-ink-2">
+                    {s.nights} {s.nights === 1 ? 'noche' : 'noches'}
+                  </div>
+                </button>
               ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Today's Transportation (if any) */}
-      {todayTransport.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Plane className="w-3.5 h-3.5 text-blue-400" />
-              Transporte de la jornada
-            </span>
-            <button
-              onClick={() => onNavigateTab('transporte')}
-              className="text-[11px] text-[#96bb89] hover:underline flex items-center"
-            >
-              Ver todos <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {todayTransport.map((tr) => (
-            <div
-              key={tr.id}
-              className="p-3.5 rounded-2xl bg-gradient-to-r from-[#191c22] to-[#1d222b] border border-blue-900/40 shadow-sm"
-            >
-              <div className="flex items-center justify-between text-xs text-blue-300 font-semibold mb-1">
-                <span className="uppercase tracking-wider font-mono">{tr.tipo} · {tr.numeroServicio || 'Programado'}</span>
-                {tr.hora && <span className="bg-blue-950 px-2 py-0.5 rounded text-blue-200 border border-blue-800">{tr.hora}</span>}
-              </div>
-
-              <div className="flex items-center justify-between mt-2">
-                <div className="font-bold text-slate-100 text-sm">{tr.origen}</div>
-                <ArrowRight className="w-4 h-4 text-slate-500 mx-2" />
-                <div className="font-bold text-slate-100 text-sm">{tr.destino}</div>
-              </div>
-
-              {tr.codigoConfirmacion && (
-                <div className="mt-2.5 pt-2 border-t border-[#272c36] flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Reserva / PNR:</span>
-                  <span className="font-mono font-bold text-emerald-400 bg-[#121417] px-2 py-0.5 rounded border border-[#272c36]">
-                    {tr.codigoConfirmacion}
-                  </span>
-                </div>
-              )}
             </div>
-          ))}
+          </div>
+
+          <Card className="p-4">
+            <SectionTitle
+              icon={<ListChecks className="size-4" />}
+              action={
+                <button type="button" onClick={() => onTab('guia')} className="text-[14px] font-semibold text-accent">
+                  Ver todo
+                </button>
+              }
+            >
+              Antes de viajar
+            </SectionTitle>
+            <Checklist trip={trip} limit={5} />
+          </Card>
+        </>
+      )}
+
+      {phase === 'after' && (
+        <div className="rounded-3xl bg-accent p-5 text-accent-ink">
+          <div className="font-display text-[28px] font-semibold">¡Bienvenidos de vuelta!</div>
+          <p className="mt-1 text-[15px] opacity-90">El itinerario sigue acá para revisar cada día del viaje.</p>
         </div>
       )}
 
-      {/* Today's Accommodation (if any) */}
-      {todayAccommodation && (
-        <div className="p-3.5 rounded-2xl bg-[#191c22] border border-[#272c36] shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start space-x-2.5">
-              <div className="p-2 rounded-xl bg-purple-950/60 text-purple-300 border border-purple-800/40 shrink-0">
-                <Building2 className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-[10px] font-semibold text-purple-300 uppercase tracking-wider">
-                  Alojamiento de hoy
-                </span>
-                <div className="text-sm font-bold text-slate-100 leading-tight mt-0.5">
-                  {todayAccommodation.nombre}
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5 leading-snug">
-                  {todayAccommodation.direccion}
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={() => onNavigateTab('alojamiento')}
-              className="text-xs text-[#96bb89] hover:underline shrink-0 p-1"
-            >
-              Detalles
-            </button>
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={() => setIdx(idx - 1)} disabled={idx === 0} aria-label="Día anterior" className="grid size-10 place-items-center rounded-full bg-surface-2 disabled:opacity-30">
+            <ChevronLeft className="size-5" />
+          </button>
+          <div className="min-w-0 text-center">
+            <Eyebrow>{isToday ? `Hoy · día ${day.n} de ${trip.days.length}` : `Día ${day.n} de ${trip.days.length}`}</Eyebrow>
+            <div className="text-[15px] font-semibold first-letter:uppercase">{fmtLong(day.date)}</div>
           </div>
-        </div>
-      )}
-
-      {/* Activities Timeline for Today */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-[#7ea172]" />
-            Actividades del Día
-          </span>
           <button
-            onClick={() => onNavigateTab('itinerario')}
-            className="text-[11px] text-[#96bb89] hover:underline flex items-center"
+            type="button"
+            onClick={() => setIdx(idx + 1)}
+            disabled={idx >= trip.days.length - 1}
+            aria-label="Día siguiente"
+            className="grid size-10 place-items-center rounded-full bg-surface-2 disabled:opacity-30"
           >
-            Ver itinerario completo <ChevronRight className="w-3 h-3" />
+            <ChevronRight className="size-5" />
           </button>
         </div>
 
-        {todayItinerary.length === 0 ? (
-          <div className="p-6 rounded-2xl bg-[#191c22] border border-[#272c36] text-center space-y-2">
-            <Compass className="w-8 h-8 text-slate-600 mx-auto" />
-            <div className="text-sm font-semibold text-slate-300">Día libre o sin actividades programadas</div>
-            <p className="text-xs text-slate-400">
-              Aprovecha para recorrer {currentCity} a tu propio ritmo o descansar.
+        <div className="mt-4">
+          <Eyebrow>
+            {flagOf(day.city)} {countryOf(day.city)?.name}
+          </Eyebrow>
+          <button
+            type="button"
+            onClick={() => day.city.key && day.city.key !== 'santiago' && onCity(day.city.key)}
+            className="mt-0.5 text-left font-display text-[42px] font-semibold leading-[1.02] tracking-tight"
+          >
+            {day.city.name}
+          </button>
+          {day.kind === 'transfer' && (
+            <p className="mt-1 text-[15px] text-ink-2">
+              Traslado {day.from?.name} → {day.to?.name}
             </p>
+          )}
+          {day.excursion && (
+            <p className="mt-1 text-[15px] text-ink-2">
+              Excursión a {flagOf(day.excursion)} {day.excursion.name}
+            </p>
+          )}
+          {wx && (
+            <p className="mt-2 flex items-center gap-2 text-[14px] text-ink-2">
+              <WxIcon code={wx.code} className="size-5 text-accent" />
+              <span>
+                <b className="font-semibold text-ink">
+                  {wx.min}–{wx.max} °C
+                </b>{' '}
+                · {wxLabel(wx.code)}
+                {wx.pop ? ` · ${wx.pop} % lluvia` : ''}
+              </span>
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <DayBody day={day} trip={trip} forecast={forecast} onPlace={onPlace} onLeg={onLeg} onTab={onTab} />
+        </div>
+      </Card>
+
+      {nextLeg && (
+        <div>
+          <SectionTitle>Próximo traslado · {fmtShort(nextLeg.date)}</SectionTitle>
+          <LegCard leg={nextLeg} onOpen={() => onLeg(nextLeg)} />
+        </div>
+      )}
+
+      <Card className="grid grid-cols-2 divide-x divide-line">
+        <div className="p-4">
+          <Eyebrow>{euroCity?.name ?? 'Europa'}</Eyebrow>
+          <div className="mt-1 text-[30px] font-semibold leading-none tabular-nums">{timeIn(tz, now)}</div>
+        </div>
+        <div className="p-4">
+          <Eyebrow>Chile</Eyebrow>
+          <div className="mt-1 text-[30px] font-semibold leading-none tabular-nums">{timeIn('America/Santiago', now)}</div>
+          <div className="mt-1.5 flex items-center gap-1 text-[12px] text-ink-3">
+            <Clock className="size-3" />
+            {ahead > 0 ? `Europa va ${ahead} h adelante` : 'Misma hora'}
           </div>
-        ) : (
-          <div className="space-y-2.5">
-            {todayItinerary.map((item) => (
-              <div
-                key={item.id}
-                className="p-3.5 rounded-2xl bg-[#191c22] border border-[#272c36] hover:border-[#38404f] transition-all"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    {/* Time pill */}
-                    <div className="flex items-center space-x-2 mb-1.5">
-                      <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1e281f] text-[#96bb89] border border-[#2d422f]">
-                        <Clock className="w-2.5 h-2.5 mr-1" />
-                        {item.horaInicio || 'Durante el día'}{item.horaFin ? ` - ${item.horaFin}` : ''}
-                      </span>
-                      {item.costoEstimado && (
-                        <span className="text-[10px] text-slate-400">
-                          {item.costoEstimado}
-                        </span>
-                      )}
-                    </div>
+        </div>
+      </Card>
 
-                    <h3 className="text-sm font-bold text-slate-100 leading-snug m-0">
-                      {item.actividad}
-                    </h3>
-
-                    {item.notas && (
-                      <p className="text-xs text-slate-400 mt-1.5 leading-relaxed bg-[#121417] p-2 rounded-xl border border-[#222630]">
-                        {item.notas}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Direct link button if any */}
-                  {item.linkReserva && (
-                    <a
-                      href={item.linkReserva}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-xl bg-[#222630] hover:bg-[#2c3240] text-[#96bb89] active:scale-95 transition-all shrink-0"
-                      title="Abrir reserva o ticket"
-                    >
-                      <Ticket className="w-4 h-4" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <Card className="p-4">
+        <SectionTitle
+          action={
+            <button type="button" onClick={() => onTab('guia')} className="shrink-0 text-[14px] font-semibold text-accent">
+              Más
+            </button>
+          }
+        >
+          {country.flag} Lo básico en {country.name}
+        </SectionTitle>
+        <div className="divide-y divide-line">
+          <Row icon={<Coins className="size-4" />} label="Moneda">
+            {country.currency === 'EUR' ? 'Euro' : 'Forinto húngaro (HUF)'} · {fmtMoney(local, country.currency)} ≈ {fmtMoney(convert(local, country.currency, 'CLP', rates), 'CLP')}
+            {country.currency !== 'EUR' && ` ≈ ${fmtMoney(convert(local, country.currency, 'EUR', rates), 'EUR')}`}
+          </Row>
+          <Row icon={<Phone className="size-4" />} label="Emergencias">
+            <span className="flex flex-wrap gap-x-4 gap-y-1">
+              <a href="tel:112" className="font-semibold text-danger">
+                112 · todo tipo
+              </a>
+              {essentials.map((e) => (
+                <a key={e.number} href={`tel:${e.number.replace(/\s/g, '')}`} className="font-semibold text-accent">
+                  {e.number} · {e.label.toLowerCase()}
+                </a>
+              ))}
+            </span>
+          </Row>
+          <Row icon={<Languages className="size-4" />} label="Idioma">
+            {country.language}
+            {thanks && (
+              <span className="block text-ink-2">
+                «Gracias» se dice <b className="font-semibold text-ink">{thanks[1]}</b>
+                {thanks[2] ? ` (${thanks[2]})` : ''}
+              </span>
+            )}
+          </Row>
+          <Row icon={<Plug className="size-4" />} label="Enchufes">
+            {country.plugs}
+          </Row>
+        </div>
+      </Card>
     </div>
   )
 }
