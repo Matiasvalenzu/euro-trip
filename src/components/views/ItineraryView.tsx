@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, ChevronDown, TriangleAlert } from 'lucide-react'
-import type { Day, Leg, Place, TabType, Trip } from '../../types/travel'
+import type { Activity, Day, Leg, TabType, Trip } from '../../types/travel'
 import { forecastFor, type Forecast } from '../../services/weather'
-import { CITIES, countryOf, flagOf } from '../../data/destinations'
+import { countryOf, flagOf, getCity } from '../../data/destinations'
 import { dateTile, fmtRange, fmtShort, todayIso } from '../../lib/dates'
-import { fmtTemp } from '../../lib/text'
+import { shortTemp } from '../../lib/text'
 import { DayBody, WxIcon } from '../DayParts'
 import { LegConnector } from '../LegCard'
 import { Chip, Eyebrow, ModeChip, PageTitle } from '../ui'
@@ -12,7 +12,7 @@ import { Chip, Eyebrow, ModeChip, PageTitle } from '../ui'
 interface Props {
   trip: Trip
   forecast: Forecast
-  onPlace: (p: Place, date: string) => void
+  onPlace: (a: Activity, d: Day) => void
   onLeg: (l: Leg) => void
   onCity: (key: string) => void
   onTab: (t: TabType) => void
@@ -66,7 +66,7 @@ function DayCard({ day, open, isToday, onToggle, ...rest }: { day: Day; open: bo
                 {wx.min}–{wx.max} °C
               </Chip>
             ) : (
-              day.temp && <Chip>{fmtTemp(day.temp)}</Chip>
+              shortTemp(day.temp) && <Chip>{shortTemp(day.temp)}</Chip>
             )}
             {(day.alerts.length > 0 || hasClosure) && (
               <Chip tone="warn" icon={<TriangleAlert className="size-3.5" />}>
@@ -110,7 +110,8 @@ export function ItineraryView({ onCity, ...dayProps }: Props) {
     for (const ref of [d.city, d.excursion, d.leg && !d.leg.optional ? d.leg.to : undefined]) {
       if (!ref?.key || ref.key === 'santiago') continue
       cities.add(ref.key)
-      countries.add(CITIES[ref.key].country)
+      const c = getCity(ref.key)
+      if (c) countries.add(c.country)
     }
   }
 

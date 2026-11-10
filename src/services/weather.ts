@@ -1,5 +1,5 @@
 import type { Day } from '../types/travel'
-import { CITIES } from '../data/destinations'
+import { getCity, type City } from '../data/destinations'
 import { readJson, writeJson } from './storage'
 
 export interface DayWx {
@@ -23,7 +23,8 @@ export function cachedForecast(): { data: Forecast; updated: number } | null {
 export async function fetchForecast(keys: string[], force = false): Promise<Forecast> {
   const cached = cachedForecast()
   if (!force && cached && Date.now() - cached.updated < TTL) return cached.data
-  const cities = keys.map((k) => CITIES[k]).filter(Boolean)
+  const cities = keys.map((k) => getCity(k)).filter((c): c is City => !!c)
+  if (!cities.length) return cached?.data ?? {}
   const params = new URLSearchParams({
     latitude: cities.map((c) => c.lat).join(','),
     longitude: cities.map((c) => c.lon).join(','),

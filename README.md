@@ -29,7 +29,11 @@ La app lee **la primera pestaña** de la planilla (una fila por día) y arma tod
 | `Alojamiento` | Texto tipo `Reservado (22-24 nov, …): Nombre — total pagado $… Código de reserva …` + enlace. |
 | `Toño` | Dónde está Toño cada día; la app marca cuando coinciden. |
 
-Para que un lugar nuevo de la planilla aparezca con guía, agréguenlo en `src/data/places.ts` (nombre, alias sin tildes y título de Wikipedia).
+Cambios en la planilla:
+
+- **Ciudad nueva:** si no está en `src/data/destinations.ts`, la app la ubica sola (país, bandera, clima y hora local vía Open-Meteo) y la guarda en el teléfono. Para tener frases, moneda y emergencias del país, agréguenla al catálogo.
+- **Actividades:** escriban con comas, puntos y paréntesis como de costumbre. Lo que va entre paréntesis queda como nota del lugar; `Mañana:`, `Tarde:` y `Opcional:` se muestran como etiquetas, y las frases con "cerrado", "verificar" o "según" salen como avisos del día.
+- **Lugares:** los del catálogo `src/data/places.ts` tienen descripción y foto propias; cualquier otro nombre propio también se puede tocar y busca su guía en Wikipedia.
 
 ## ✨ Secciones
 

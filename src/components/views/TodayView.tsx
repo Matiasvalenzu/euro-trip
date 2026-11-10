@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Clock, Coins, Languages, ListChecks, Phone, Plug } from 'lucide-react'
-import type { Leg, Place, Rates, TabType, Trip } from '../../types/travel'
+import type { Activity, Day, Leg, Rates, TabType, Trip } from '../../types/travel'
 import { forecastFor, wxLabel, type Forecast } from '../../services/weather'
-import { CITIES, COUNTRIES, countryOf, flagOf } from '../../data/destinations'
+import { countryOf, flagOf, getCity, getCountry } from '../../data/destinations'
 import { daysBetween, fmtLong, fmtRange, fmtShort, hoursAhead, timeIn, todayIso } from '../../lib/dates'
-import { convert, fmtMoney } from '../../lib/money'
+import { convert, currencyLabel, fmtMoney, isCurrency } from '../../lib/money'
 import { useNow } from '../../hooks/useStored'
 import { Checklist } from '../Checklist'
 import { DayBody, WxIcon } from '../DayParts'
@@ -15,7 +15,7 @@ interface Props {
   trip: Trip
   forecast: Forecast
   rates: Rates
-  onPlace: (p: Place, date: string) => void
+  onPlace: (a: Activity, d: Day) => void
   onLeg: (l: Leg) => void
   onCity: (key: string) => void
   onTab: (t: TabType) => void
@@ -31,8 +31,8 @@ export function TodayView({ trip, forecast, rates, onPlace, onLeg, onCity, onTab
 
   // Ciudad europea de referencia (los días de vuelo desde/hacia Santiago usan la otra punta).
   const euroRef = day.excursion ?? (day.city.key === 'santiago' ? (day.to?.key !== 'santiago' ? day.to : day.from) : day.city)
-  const euroCity = euroRef?.key ? CITIES[euroRef.key] : undefined
-  const country = countryOf(euroRef) ?? COUNTRIES.NL
+  const euroCity = getCity(euroRef?.key)
+  const country = countryOf(euroRef) ?? getCountry('NL')!
   const tz = euroCity?.tz ?? 'Europe/Paris'
   const ahead = hoursAhead(tz, 'America/Santiago', now)
   const wx = forecastFor(day, forecast)
@@ -41,7 +41,8 @@ export function TodayView({ trip, forecast, rates, onPlace, onLeg, onCity, onTab
   const daysLeft = daysBetween(today, trip.start)
   const isToday = day.date === today
 
-  const local = country.currency === 'HUF' ? 1000 : 1
+  const cur = country.currency
+  const local = isCurrency(cur) ? (rates[cur] >= 50 ? 1000 : rates[cur] >= 2 ? 10 : 1) : 1
   const essentials = country.emergency.filter((e) => e.number !== '112').slice(0, 2)
   const thanks = country.phrases.find((p) => p[0] === 'Gracias')
 
@@ -197,8 +198,13 @@ export function TodayView({ trip, forecast, rates, onPlace, onLeg, onCity, onTab
         </SectionTitle>
         <div className="divide-y divide-line">
           <Row icon={<Coins className="size-4" />} label="Moneda">
-            {country.currency === 'EUR' ? 'Euro' : 'Forinto húngaro (HUF)'} · {fmtMoney(local, country.currency)} ≈ {fmtMoney(convert(local, country.currency, 'CLP', rates), 'CLP')}
-            {country.currency !== 'EUR' && ` ≈ ${fmtMoney(convert(local, country.currency, 'EUR', rates), 'EUR')}`}
+            {currencyLabel(cur) || 'Moneda local'}
+            {isCurrency(cur) && (
+              <span className="block text-ink-2">
+                {fmtMoney(local, cur)} ≈ {fmtMoney(convert(local, cur, 'CLP', rates), 'CLP')}
+                {cur !== 'EUR' && ` ≈ ${fmtMoney(convert(local, cur, 'EUR', rates), 'EUR')}`}
+              </span>
+            )}
           </Row>
           <Row icon={<Phone className="size-4" />} label="Emergencias">
             <span className="flex flex-wrap gap-x-4 gap-y-1">
@@ -212,18 +218,22 @@ export function TodayView({ trip, forecast, rates, onPlace, onLeg, onCity, onTab
               ))}
             </span>
           </Row>
-          <Row icon={<Languages className="size-4" />} label="Idioma">
-            {country.language}
-            {thanks && (
-              <span className="block text-ink-2">
-                «Gracias» se dice <b className="font-semibold text-ink">{thanks[1]}</b>
-                {thanks[2] ? ` (${thanks[2]})` : ''}
-              </span>
-            )}
-          </Row>
-          <Row icon={<Plug className="size-4" />} label="Enchufes">
-            {country.plugs}
-          </Row>
+          {country.language && (
+            <Row icon={<Languages className="size-4" />} label="Idioma">
+              {country.language}
+              {thanks && (
+                <span className="block text-ink-2">
+                  «Gracias» se dice <b className="font-semibold text-ink">{thanks[1]}</b>
+                  {thanks[2] ? ` (${thanks[2]})` : ''}
+                </span>
+              )}
+            </Row>
+          )}
+          {country.plugs && (
+            <Row icon={<Plug className="size-4" />} label="Enchufes">
+              {country.plugs}
+            </Row>
+          )}
         </div>
       </Card>
     </div>

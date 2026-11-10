@@ -36,11 +36,11 @@ export function LegRoute({ leg }: { leg: Leg }) {
             <div className="text-[26px] font-semibold leading-tight tabular-nums">{leg.depart}</div>
           </>
         ) : (
-          <div className="truncate text-[18px] font-semibold">{leg.from.name}</div>
+          <div className="truncate text-[16px] font-semibold">{leg.from.name}</div>
         )}
       </div>
       <div className="flex flex-col items-center px-1 text-center">
-        {leg.duration && <span className="whitespace-nowrap text-[12px] font-semibold text-ink-2">{leg.duration}</span>}
+        {leg.duration && <span className="max-w-[7rem] truncate text-[12px] font-semibold text-ink-2">{leg.duration}</span>}
         <span className="my-1 flex items-center gap-1 text-ink-3">
           <span className="h-px w-5 bg-line" />
           <ModeIcon mode={leg.mode} className="size-4" />
@@ -58,7 +58,7 @@ export function LegRoute({ leg }: { leg: Leg }) {
             </div>
           </>
         ) : (
-          <div className="truncate text-[18px] font-semibold">{leg.to.name}</div>
+          <div className="truncate text-[16px] font-semibold">{leg.to.name}</div>
         )}
       </div>
     </div>

@@ -13,7 +13,7 @@ export async function fetchRates(): Promise<Rates> {
   const res = await fetch('https://open.er-api.com/v6/latest/EUR')
   if (!res.ok) throw new Error(`No se pudieron actualizar las tasas (${res.status}).`)
   const { rates } = await res.json()
-  const r: Rates = { EUR: 1, CLP: rates.CLP, HUF: rates.HUF, USD: rates.USD, updated: Date.now() }
+  const r: Rates = { EUR: 1, CLP: rates.CLP, HUF: rates.HUF, PLN: rates.PLN, USD: rates.USD, updated: Date.now() }
   saveRates(r)
   return r
 }

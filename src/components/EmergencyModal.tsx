@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BedDouble, ExternalLink, Landmark, Phone, Plus, Trash, UserRound } from 'lucide-react'
 import type { Day, Trip } from '../types/travel'
-import { COUNTRIES, CITIES, countryOf, type CountryCode } from '../data/destinations'
+import { countryOf, getCity, getCountry, type CountryCode } from '../data/destinations'
 import { useStored } from '../hooks/useStored'
 import { Button, Card, CopyButton, Eyebrow, Sheet } from './ui'
 
@@ -19,10 +19,10 @@ export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; on
   const current = countryOf(ref)?.code ?? 'NL'
   const [picked, setPicked] = useState<CountryCode | null>(null)
   const code = picked ?? current
-  const country = COUNTRIES[code]
+  const country = getCountry(code)!
 
   const codes = trip
-    ? ([...new Set(trip.days.flatMap((d) => [d.city, d.excursion].map((r) => (r?.key ? CITIES[r.key].country : null))))].filter((c) => c && c !== 'CL') as CountryCode[])
+    ? ([...new Set(trip.days.flatMap((d) => [d.city, d.excursion].map((r) => getCity(r?.key)?.country)))].filter((c) => c && c !== 'CL') as CountryCode[])
     : []
 
   const stay = day && trip?.stays.find((s) => s.dayIndexes.includes(day.index))
@@ -63,7 +63,7 @@ export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; on
                 onClick={() => setPicked(c)}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-[14px] font-semibold ${c === code ? 'bg-ink text-bg' : 'border border-line bg-surface text-ink-2'}`}
               >
-                {COUNTRIES[c].flag} {COUNTRIES[c].name}
+                {getCountry(c)?.flag} {getCountry(c)?.name}
               </button>
             ))}
           </div>

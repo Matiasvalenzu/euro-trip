@@ -19,7 +19,7 @@ function StayCard({ stay }: { stay: Stay }) {
   const l = stay.lodging
   const country = countryOf(stay.city)
   const links = searchLinks(stay)
-  const status = l ? (l.confirmed ? { tone: 'ok' as const, text: 'Reservado' } : { tone: 'warn' as const, text: l.status }) : { tone: 'danger' as const, text: 'Sin reserva' }
+  const status = l ? (l.confirmed ? { tone: 'ok' as const, text: l.status === 'Confirmado' ? 'Confirmado' : 'Reservado' } : { tone: 'warn' as const, text: l.status }) : { tone: 'danger' as const, text: 'Sin reserva' }
 
   return (
     <Card className="p-4">
@@ -108,6 +108,15 @@ function StayCard({ stay }: { stay: Stay }) {
       ) : (
         <>
           <p className="mt-3 text-[14px] text-ink-2">Todavía no hay alojamiento en la planilla para estas noches.</p>
+          {stay.notes.length > 0 && (
+            <div className="mt-1 divide-y divide-line">
+              {stay.notes.map((n, i) => (
+                <Row key={i} icon={<Info className="size-4" />} label="Nota">
+                  {n}
+                </Row>
+              ))}
+            </div>
+          )}
           <div className="mt-3 grid grid-cols-2 gap-2">
             <LinkButton href={links.airbnb} icon={<Search className="size-4" />}>
               Airbnb

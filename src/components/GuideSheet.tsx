@@ -1,40 +1,56 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, ExternalLink, Globe, Navigation, Ticket, WifiOff } from 'lucide-react'
+import { BookOpen, ExternalLink, Globe, Info, Navigation, Search, Ticket, WifiOff } from 'lucide-react'
 import type { Place } from '../types/travel'
-import { CITIES, COUNTRIES, mapsUrl, voyageUrl, wikiUrl } from '../data/destinations'
-import { cachedSummary, getSummary, type WikiSummary } from '../services/wiki'
+import { getCity, getCountry, mapsUrl, voyageUrl, wikiUrl } from '../data/destinations'
+import { cachedSearch, cachedSummary, getSummary, searchTitle, type WikiSummary } from '../services/wiki'
+import { currencyLabel } from '../lib/money'
 import { WEEKDAY_PLURAL, fmtShort, weekdayOf } from '../lib/dates'
 import { Button, Card, Chip, Eyebrow, LinkButton, Sheet } from './ui'
 
-export type GuideTarget = { kind: 'place'; place: Place; date?: string } | { kind: 'city'; key: string }
+export type GuideTarget =
+  | { kind: 'place'; place: Place; date?: string; note?: string }
+  | { kind: 'city'; key: string }
+  /** Lugar que no está en el catálogo: la guía se busca en Wikipedia. */
+  | { kind: 'search'; label: string; query: string; cityKey: string | null; note?: string }
 
 export interface ReaderTarget {
   url: string
   title: string
 }
 
-function useWiki(title?: string) {
-  const [fetched, setFetched] = useState<{ title: string; summary?: WikiSummary } | null>(null)
+type WikiState = 'idle' | 'loading' | 'offline' | 'none' | 'error'
+
+/** Resumen de Wikipedia por título o, si no hay título, buscando el lugar. */
+function useWiki(title?: string, query?: string, label = '') {
+  const key = title ?? (query ? `q:${query}` : undefined)
+  const [fetched, setFetched] = useState<{ key: string; summary?: WikiSummary; title?: string | null } | null>(null)
+  const knownTitle = title ?? (query ? cachedSearch(query) : undefined)
+  const cached = knownTitle ? cachedSummary(knownTitle) : undefined
   useEffect(() => {
-    if (!title || cachedSummary(title) || !navigator.onLine) return
+    if (!key || cached || knownTitle === null || !navigator.onLine) return
     let alive = true
-    getSummary(title)
-      .then((summary) => alive && setFetched({ title, summary }))
-      .catch(() => alive && setFetched({ title }))
+    ;(async () => {
+      const t = title ?? (await searchTitle(query!, label))
+      const summary = t ? await getSummary(t) : undefined
+      if (alive) setFetched({ key, summary, title: t })
+    })().catch(() => alive && setFetched({ key }))
     return () => {
       alive = false
     }
-  }, [title])
-  const mine = fetched?.title === title ? fetched : null
-  const summary = (title ? cachedSummary(title) : undefined) ?? mine?.summary
-  const state: 'idle' | 'loading' | 'offline' | 'error' = summary ? 'idle' : !navigator.onLine ? 'offline' : mine ? 'error' : 'loading'
-  return { summary, state }
+    // Solo cuando cambia el lugar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  const mine = fetched?.key === key ? fetched : null
+  const summary = cached ?? mine?.summary
+  const resolved = knownTitle ?? mine?.title ?? undefined
+  const state: WikiState = summary ? 'idle' : knownTitle === null || mine?.title === null ? 'none' : !navigator.onLine ? 'offline' : mine ? 'error' : 'loading'
+  return { summary, state, title: resolved ?? undefined }
 }
 
-function WikiBlock({ summary, state }: ReturnType<typeof useWiki>) {
+function WikiBlock({ summary, state, title }: ReturnType<typeof useWiki>) {
   return (
     <Card className="p-3.5">
-      <Eyebrow>Según Wikipedia</Eyebrow>
+      <Eyebrow>{summary && title ? `Según Wikipedia · ${title}` : 'Según Wikipedia'}</Eyebrow>
       {summary ? (
         <p className="mt-1.5 text-[14px] leading-relaxed text-ink-2">{summary.extract}</p>
       ) : state === 'loading' ? (
@@ -43,9 +59,11 @@ function WikiBlock({ summary, state }: ReturnType<typeof useWiki>) {
           <div className="h-3 w-5/6 animate-pulse rounded bg-surface-2" />
           <div className="h-3 w-2/3 animate-pulse rounded bg-surface-2" />
         </div>
+      ) : state === 'none' ? (
+        <p className="mt-1.5 text-[14px] text-ink-3">No hay un artículo de Wikipedia en español para este lugar.</p>
       ) : (
         <p className="mt-1.5 flex items-center gap-2 text-[14px] text-ink-3">
-          <WifiOff className="size-4" />
+          <WifiOff className="size-4 shrink-0" />
           {state === 'offline' ? 'Sin conexión. Descarga las guías en Ajustes para leerlas offline.' : 'No se pudo cargar el resumen.'}
         </p>
       )}
@@ -59,39 +77,53 @@ function Hero({ src }: { src?: string }) {
 }
 
 export function GuideSheet({ target, onClose, onRead }: { target: GuideTarget | null; onClose: () => void; onRead: (r: ReaderTarget) => void }) {
-  const city = target ? CITIES[target.kind === 'place' ? target.place.city : target.key] : undefined
-  const title = target ? (target.kind === 'place' ? target.place.wiki : city?.wiki) : undefined
-  const wiki = useWiki(title)
-  const country = city ? COUNTRIES[city.country] : undefined
+  const place = target?.kind === 'place' ? target.place : undefined
+  const search = target?.kind === 'search' ? target : undefined
+  const city = getCity(place ? place.city : target?.kind === 'city' ? target.key : search?.cityKey)
+  const country = getCountry(city?.country)
+  const isCity = target?.kind === 'city'
+  const name = place?.name ?? search?.label ?? city?.name ?? 'Guía'
+  const title = place ? place.wiki : isCity ? city?.wiki : undefined
+  const query = title ? undefined : place ? `${place.name} ${city?.name ?? ''}` : search?.query
+  const wiki = useWiki(title, query, place?.name ?? search?.label)
+  const note = target && target.kind !== 'city' ? target.note : undefined
+  const date = target?.kind === 'place' ? target.date : undefined
+  const closed = !!(place && date && place.closed?.includes(weekdayOf(date)))
+  const where = city ? `${name}, ${city.name}` : name
 
   return (
-    <Sheet open={!!target} onClose={onClose} label={target?.kind === 'place' ? target.place.name : (city?.name ?? 'Guía')}>
-      {target && city && country && (
+    <Sheet open={!!target} onClose={onClose} label={name}>
+      {target && (
         <div className="pt-8">
-          <Hero src={(target.kind === 'place' ? target.place.photo : undefined) ?? wiki.summary?.thumb} />
+          <Hero src={place?.photo ?? wiki.summary?.thumb} />
           <Eyebrow>
-            {country.flag} {target.kind === 'place' ? `${city.name} · ${country.name}` : country.name}
+            {country?.flag ?? '📍'} {isCity ? (country?.name ?? '') : [city?.name, country?.name].filter(Boolean).join(' · ')}
           </Eyebrow>
-          <h2 className="mt-1 font-display text-[30px] font-semibold leading-tight">{target.kind === 'place' ? target.place.name : city.name}</h2>
+          <h2 className="mt-1 font-display text-[30px] font-semibold leading-tight">{name}</h2>
 
-          {target.kind === 'place' ? (
-            <>
-              {(target.place.book || (target.date && target.place.closed?.includes(weekdayOf(target.date)))) && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {target.date && target.place.closed?.includes(weekdayOf(target.date)) && (
-                    <Chip tone="danger">
-                      Cierra los {WEEKDAY_PLURAL[weekdayOf(target.date)]} · ojo el {fmtShort(target.date)}
-                    </Chip>
-                  )}
-                  {target.place.book && <Chip tone="warn">Conviene reservar entrada</Chip>}
-                </div>
+          {(closed || place?.book) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {closed && date && (
+                <Chip tone="danger">
+                  Cierra los {WEEKDAY_PLURAL[weekdayOf(date)]} · ojo el {fmtShort(date)}
+                </Chip>
               )}
-              <p className="mt-3 text-[16px] leading-relaxed">{target.place.blurb}</p>
-            </>
-          ) : (
+              {place?.book && <Chip tone="warn">Conviene reservar entrada</Chip>}
+            </div>
+          )}
+          {place && <p className="mt-3 text-[16px] leading-relaxed">{place.blurb}</p>}
+          {isCity && country && (
             <p className="mt-2 text-[15px] text-ink-2">
-              Moneda: {country.currency === 'EUR' ? 'euro (€)' : country.currency === 'HUF' ? 'forinto húngaro (Ft)' : country.currency} · Idioma: {country.language}
+              {[country.currency && `Moneda: ${currencyLabel(country.currency)}`, country.language && `Idioma: ${country.language}`].filter(Boolean).join(' · ')}
             </p>
+          )}
+          {note && (
+            <div className="mt-3 flex gap-2.5 rounded-xl bg-accent-soft px-3 py-2.5 text-[14px] leading-snug">
+              <Info className="mt-0.5 size-4 shrink-0 text-accent" />
+              <span className="min-w-0 break-words">
+                <b className="font-semibold">En la planilla:</b> {note}
+              </span>
+            </div>
           )}
 
           <div className="mt-4">
@@ -99,38 +131,46 @@ export function GuideSheet({ target, onClose, onRead }: { target: GuideTarget | 
           </div>
 
           <div className="mt-4 grid gap-2">
-            {target.kind === 'place' ? (
-              <>
-                <Button primary icon={<BookOpen className="size-4" />} onClick={() => onRead({ url: wikiUrl(target.place.wiki ?? target.place.name), title: target.place.name })}>
-                  Leer la guía completa aquí
-                </Button>
-                <div className="grid grid-cols-2 gap-2">
-                  <LinkButton href={mapsUrl(`${target.place.name}, ${city.name}`)} icon={<Navigation className="size-4" />}>
-                    Cómo llegar
-                  </LinkButton>
-                  {target.place.url ? (
-                    <LinkButton href={target.place.url} icon={<Ticket className="size-4" />}>
-                      Sitio oficial
-                    </LinkButton>
-                  ) : (
-                    <LinkButton href={wikiUrl(target.place.wiki ?? target.place.name)} icon={<Globe className="size-4" />}>
-                      Wikipedia
-                    </LinkButton>
-                  )}
-                </div>
-              </>
-            ) : (
+            {isCity && city ? (
               <>
                 <Button primary icon={<BookOpen className="size-4" />} onClick={() => onRead({ url: voyageUrl(city.voyage), title: `Guía de ${city.name}` })}>
                   Guía de viaje de {city.name}
                 </Button>
                 <div className="grid grid-cols-2 gap-2">
                   <LinkButton href={mapsUrl(city.name)} icon={<Navigation className="size-4" />}>
-                    Ver en el mapa
+                    Mapa
                   </LinkButton>
-                  {city.tourism && (
-                    <LinkButton href={city.tourism} icon={<Globe className="size-4" />}>
-                      Turismo oficial
+                  <LinkButton href={city.tourism ?? wikiUrl(city.wiki)} icon={<Globe className="size-4" />}>
+                    {city.tourism ? 'Turismo' : 'Wikipedia'}
+                  </LinkButton>
+                </div>
+              </>
+            ) : (
+              <>
+                {wiki.title ? (
+                  <Button primary icon={<BookOpen className="size-4" />} onClick={() => onRead({ url: wikiUrl(wiki.title!), title: name })}>
+                    Leer la guía completa aquí
+                  </Button>
+                ) : (
+                  <LinkButton primary href={`https://www.google.com/search?q=${encodeURIComponent(where)}`} icon={<Search className="size-4" />}>
+                    Buscar en la web
+                  </LinkButton>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <LinkButton href={mapsUrl(where)} icon={<Navigation className="size-4" />}>
+                    Cómo llegar
+                  </LinkButton>
+                  {place?.url ? (
+                    <LinkButton href={place.url} icon={<Ticket className="size-4" />}>
+                      Sitio oficial
+                    </LinkButton>
+                  ) : wiki.title ? (
+                    <LinkButton href={wikiUrl(wiki.title)} icon={<Globe className="size-4" />}>
+                      Wikipedia
+                    </LinkButton>
+                  ) : (
+                    <LinkButton href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(where)}`} icon={<Globe className="size-4" />}>
+                      Reseñas
                     </LinkButton>
                   )}
                 </div>

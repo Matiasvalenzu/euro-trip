@@ -58,6 +58,35 @@ export async function fetchSummaries(titles: string[]): Promise<void> {
   }
 }
 
+// ---------- Búsqueda (lugares fuera del catálogo) ----------
+
+const SEARCH_KEY = 'eurotrip_wiki_search_v1'
+let searchMemo: Record<string, string | null> | null = null
+const searchCache = () => (searchMemo ??= readJson<Record<string, string | null>>(SEARCH_KEY, {}))
+
+/** undefined = aún no se buscó; null = sin artículo. */
+export const cachedSearch = (query: string): string | null | undefined => searchCache()[query]
+
+const GENERIC = new Set(['museo', 'barrio', 'plaza', 'parque', 'calle', 'mercado', 'iglesia', 'palacio', 'castillo', 'catedral', 'puente', 'torre', 'jardin', 'jardines', 'mirador', 'galeria', 'avenida', 'paseo', 'casa'])
+const normWord = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+/** Busca el artículo de un lugar. Solo acepta un resultado que comparta una palabra distintiva con `label`. */
+export async function searchTitle(query: string, label: string): Promise<string | null> {
+  const known = cachedSearch(query)
+  if (known !== undefined) return known
+  const params = new URLSearchParams({ action: 'query', list: 'search', srsearch: query, srlimit: '3', format: 'json', formatversion: '2', origin: '*' })
+  const res = await fetch(`https://es.wikipedia.org/w/api.php?${params}`)
+  if (!res.ok) throw new Error(`Wikipedia respondió ${res.status}`)
+  const titles: string[] = ((await res.json()).query?.search ?? []).map((r: { title: string }) => r.title)
+  const words = normWord(label)
+    .split(/[^a-z0-9ñ]+/)
+    .filter((w) => w.length >= 4 && !GENERIC.has(w))
+  const hit = titles.find((t) => words.some((w) => normWord(t).includes(w))) ?? null
+  searchCache()[query] = hit
+  writeJson(SEARCH_KEY, searchCache())
+  return hit
+}
+
 export async function getSummary(title: string): Promise<WikiSummary | undefined> {
   if (!cache()[title]) await fetchSummaries([title])
   return cache()[title]

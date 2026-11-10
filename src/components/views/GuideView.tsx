@@ -4,7 +4,8 @@ import {
   ListChecks, Map as MapIcon, Phone, Pill, Plug, ShieldAlert, Smartphone, Ticket, TrainFront,
 } from 'lucide-react'
 import type { Trip } from '../../types/travel'
-import { CITIES, COUNTRIES, PLUG_NOTE, type CountryCode } from '../../data/destinations'
+import { PLUG_NOTE, getCity, getCountry, type CountryCode } from '../../data/destinations'
+import { currencyLabel } from '../../lib/money'
 import { LINK_GROUPS, tipMeta } from '../../data/resources'
 import { Checklist } from '../Checklist'
 import { Card, PageTitle, Row, SectionTitle } from '../ui'
@@ -30,7 +31,7 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
       if (ref?.key && ref.key !== 'santiago' && !cityKeys.includes(ref.key)) cityKeys.push(ref.key)
     }
   }
-  const countryCodes = [...new Set(cityKeys.map((k) => CITIES[k].country))] as CountryCode[]
+  const countryCodes = [...new Set(cityKeys.map((k) => getCity(k)?.country).filter((c): c is CountryCode => !!c))]
 
   return (
     <div className="space-y-6">
@@ -45,12 +46,14 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
         <SectionTitle>Guías de cada ciudad</SectionTitle>
         <div className="grid grid-cols-2 gap-2">
           {cityKeys.map((k) => {
-            const c = CITIES[k]
+            const c = getCity(k)
+            const country = getCountry(c?.country)
+            if (!c) return null
             return (
               <button key={k} type="button" onClick={() => onCity(k)} className="flex items-center justify-between gap-2 rounded-2xl border border-line bg-surface px-3.5 py-3 text-left active:bg-surface-2">
                 <span className="min-w-0">
-                  <span className="block text-[12px] text-ink-3">
-                    {COUNTRIES[c.country].flag} {COUNTRIES[c.country].name}
+                  <span className="block truncate text-[12px] text-ink-3">
+                    {country?.flag} {country?.name}
                   </span>
                   <span className="block truncate font-display text-[19px] font-semibold">{c.name}</span>
                 </span>
@@ -81,8 +84,8 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
         <SectionTitle>Países</SectionTitle>
         <div className="space-y-2">
           {countryCodes.map((code) => {
-            const c = COUNTRIES[code]
-            const cities = cityKeys.filter((k) => CITIES[k].country === code).map((k) => CITIES[k].name)
+            const c = getCountry(code)!
+            const cities = cityKeys.filter((k) => getCity(k)?.country === code).map((k) => getCity(k)!.name)
             return (
               <details key={code} className="group rounded-2xl border border-line bg-surface">
                 <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
@@ -97,9 +100,11 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
                 </summary>
                 <div className="border-t border-line px-4 pb-4">
                   <div className="divide-y divide-line">
-                    <Row icon={<Coins className="size-4" />} label="Moneda">
-                      {c.currency === 'EUR' ? 'Euro (€)' : 'Forinto húngaro (HUF, Ft)'}
-                    </Row>
+                    {c.currency && (
+                      <Row icon={<Coins className="size-4" />} label="Moneda">
+                        {currencyLabel(c.currency)}
+                      </Row>
+                    )}
                     <Row icon={<Phone className="size-4" />} label="Emergencias">
                       <span className="flex flex-wrap gap-x-4 gap-y-1">
                         {c.emergency.map((e) => (
@@ -109,10 +114,13 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
                         ))}
                       </span>
                     </Row>
-                    <Row icon={<Plug className="size-4" />} label="Enchufes">
-                      {c.plugs}
-                      <span className="mt-0.5 block text-[13px] text-ink-2">{PLUG_NOTE}</span>
-                    </Row>
+                    {c.plugs && (
+                      <Row icon={<Plug className="size-4" />} label="Enchufes">
+                        {c.plugs}
+                        <span className="mt-0.5 block text-[13px] text-ink-2">{PLUG_NOTE}</span>
+                      </Row>
+                    )}
+                    {c.phrases.length > 0 && (
                     <Row icon={<Languages className="size-4" />} label={`Idioma: ${c.language}`}>
                       <table className="mt-1 w-full text-[14px]">
                         <tbody>
@@ -128,6 +136,7 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
                         </tbody>
                       </table>
                     </Row>
+                    )}
                   </div>
                   {c.tips.length > 0 && (
                     <ul className="mt-2 space-y-1.5 rounded-xl bg-surface-2 p-3">

@@ -17,9 +17,17 @@ const CATEGORIES = ['Comida', 'Transporte', 'Entradas', 'Alojamiento', 'Compras'
 
 const parseNum = (s: string) => parseFloat(s.replace(/\./g, '').replace(',', '.'))
 
+/** Tasas para editar con coma decimal ("1,12"), que es lo que entiende parseNum. */
+const draftOf = (r: Rates) => ({
+  CLP: String(+r.CLP.toFixed(2)).replace('.', ','),
+  PLN: String(+r.PLN.toFixed(4)).replace('.', ','),
+  HUF: String(+r.HUF.toFixed(2)).replace('.', ','),
+  USD: String(+r.USD.toFixed(4)).replace('.', ','),
+})
+
 function Segmented({ value, onChange }: { value: Currency; onChange: (c: Currency) => void }) {
   return (
-    <div className="grid grid-cols-4 gap-1 rounded-xl bg-surface-2 p-1">
+    <div className="grid grid-cols-5 gap-1 rounded-xl bg-surface-2 p-1">
       {CURRENCIES.map((c) => (
         <button
           key={c}
@@ -39,7 +47,7 @@ function Converter({ rates, onRefreshRates, onUpdateRates }: Omit<Props, 'trip'>
   const [amount, setAmount] = useState('10')
   const [cur, setCur] = useState<Currency>('EUR')
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState({ CLP: String(rates.CLP), HUF: String(rates.HUF), USD: String(rates.USD) })
+  const [draft, setDraft] = useState(() => draftOf(rates))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const value = parseNum(amount) || 0
@@ -57,8 +65,8 @@ function Converter({ rates, onRefreshRates, onUpdateRates }: Omit<Props, 'trip'>
   }
 
   const save = () => {
-    const r = { CLP: parseNum(draft.CLP), HUF: parseNum(draft.HUF), USD: parseNum(draft.USD) }
-    if ([r.CLP, r.HUF, r.USD].every((x) => x > 0)) onUpdateRates({ ...rates, ...r, EUR: 1, updated: Date.now() })
+    const r = { CLP: parseNum(draft.CLP), PLN: parseNum(draft.PLN), HUF: parseNum(draft.HUF), USD: parseNum(draft.USD) }
+    if (Object.values(r).every((x) => x > 0)) onUpdateRates({ ...rates, ...r, EUR: 1, updated: Date.now() })
     setEditing(false)
   }
 
@@ -87,7 +95,7 @@ function Converter({ rates, onRefreshRates, onUpdateRates }: Omit<Props, 'trip'>
       <div className="mt-3 rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">
         {editing ? (
           <div className="space-y-2">
-            {(['CLP', 'HUF', 'USD'] as const).map((c) => (
+            {(['CLP', 'PLN', 'HUF', 'USD'] as const).map((c) => (
               <label key={c} className="flex items-center justify-between gap-3">
                 <span>€1 =</span>
                 <input
@@ -109,7 +117,7 @@ function Converter({ rates, onRefreshRates, onUpdateRates }: Omit<Props, 'trip'>
         ) : (
           <>
             <div className="tabular-nums">
-              €1 = {fmtMoney(rates.CLP, 'CLP')} · {fmtMoney(rates.HUF, 'HUF')} · US${rates.USD.toFixed(2).replace('.', ',')}
+              €1 = {fmtMoney(rates.CLP, 'CLP')} · {rates.PLN.toFixed(2).replace('.', ',')} zł · {fmtMoney(rates.HUF, 'HUF')} · US${rates.USD.toFixed(2).replace('.', ',')}
             </div>
             <div className="mt-1 flex items-center justify-between gap-2">
               <span className="text-ink-3">{rates.updated ? `Actualizado ${new Date(rates.updated).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Tasas referenciales'}</span>
@@ -121,7 +129,7 @@ function Converter({ rates, onRefreshRates, onUpdateRates }: Omit<Props, 'trip'>
                 <button
                   type="button"
                   onClick={() => {
-                    setDraft({ CLP: String(rates.CLP), HUF: String(rates.HUF), USD: String(rates.USD) })
+                    setDraft(draftOf(rates))
                     setEditing(true)
                   }}
                   className="font-semibold text-accent"

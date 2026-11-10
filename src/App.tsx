@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { CloudOff, Loader } from 'lucide-react'
-import type { Leg, Place, TabType } from './types/travel'
+import type { Activity, Day, Leg, TabType } from './types/travel'
 import { useTrip } from './hooks/useTravelData'
 import { useForecast, useRates, useStored } from './hooks/useStored'
 import { sheetUrl } from './services/gsheets'
@@ -47,7 +47,10 @@ export function App() {
     },
     [setStoredTab],
   )
-  const openPlace = useCallback((place: Place, date: string) => setGuide({ kind: 'place', place, date }), [])
+  const openPlace = useCallback((a: Activity, d: Day) => {
+    if (a.place) setGuide({ kind: 'place', place: a.place, date: d.date, note: a.note })
+    else if (a.search) setGuide({ kind: 'search', label: a.text, query: a.search, cityKey: (d.excursion ?? d.city).key, note: a.note })
+  }, [])
   const openCity = useCallback((key: string) => setGuide({ kind: 'city', key }), [])
   const closeGuide = useCallback(() => setGuide(null), [])
   const closeReader = useCallback(() => setReader(null), [])

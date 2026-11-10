@@ -1,13 +1,15 @@
-import type { CityRef, Currency } from '../types/travel'
+import type { CityRef } from '../types/travel'
 import { findWord, norm } from '../lib/text'
+import { readJson, writeJson } from '../services/storage'
 
-export type CountryCode = 'CL' | 'NL' | 'BE' | 'DE' | 'HU' | 'AT' | 'SK' | 'FR' | 'ES'
+/** Código ISO de país ("PL", "FR"…). */
+export type CountryCode = string
 
 export interface Country {
   code: CountryCode
   name: string
   flag: string
-  currency: Currency
+  currency: string
   language: string
   /** [español, idioma local, pronunciación aproximada] */
   phrases: [string, string, string?][]
@@ -34,7 +36,7 @@ export interface City {
 const PLUG_C_F = 'Tipo C/F · 230 V'
 const PLUG_C_E = 'Tipo C/E · 230 V'
 
-export const COUNTRIES: Record<CountryCode, Country> = {
+export const COUNTRIES: Record<string, Country> = {
   CL: {
     code: 'CL', name: 'Chile', flag: '🇨🇱', currency: 'CLP', language: 'Español',
     phrases: [], emergency: [{ label: 'Emergencias', number: '112' }], plugs: 'Tipo C/L · 220 V', tips: [],
@@ -85,6 +87,23 @@ export const COUNTRIES: Record<CountryCode, Country> = {
     ],
     consulate: { label: 'Embajada de Chile en Alemania', url: 'https://www.chile.gob.cl/alemania' },
     sundayNote: 'Domingo: casi todo el comercio está cerrado.',
+  },
+  PL: {
+    code: 'PL', name: 'Polonia', flag: '🇵🇱', currency: 'PLN', language: 'Polaco',
+    phrases: [
+      ['Hola', 'Dzień dobry · Cześć (informal)', 'yeñ dó-bri · cheshch'], ['Gracias', 'Dziękuję', 'dyen-kú-ye'], ['Por favor', 'Proszę', 'pró-she'],
+      ['Perdón', 'Przepraszam', 'pshe-prá-sham'], ['¿Habla inglés?', 'Czy mówi pan po angielsku?'], ['La cuenta, por favor', 'Poproszę rachunek'],
+      ['¡Salud!', 'Na zdrowie!', 'na zdró-vie'],
+    ],
+    emergency: [{ label: 'Emergencias', number: '112' }, { label: 'Policía', number: '997' }, { label: 'Ambulancia', number: '999' }],
+    plugs: PLUG_C_E,
+    tips: [
+      'La moneda es el złoty (PLN), no el euro. Paga en złoty y rechaza la «conversión» a euros o pesos.',
+      'Los domingos la mayoría de las tiendas cierra.',
+      'En tranvía, bus y metro valida el boleto (bilet) al subir; se compran en máquinas o en la app.',
+    ],
+    consulate: { label: 'Embajada de Chile en Polonia', url: 'https://www.chile.gob.cl/polonia' },
+    sundayNote: 'Domingo en Polonia: la mayoría de las tiendas está cerrada.',
   },
   HU: {
     code: 'HU', name: 'Hungría', flag: '🇭🇺', currency: 'HUF', language: 'Húngaro',
@@ -169,6 +188,7 @@ export const CITIES: Record<string, City> = {
   bruselas: { key: 'bruselas', name: 'Bruselas', country: 'BE', aliases: ['bruselas', 'bruxelles', 'brussels', 'brussel'], lat: 50.8467, lon: 4.3525, tz: 'Europe/Brussels', wiki: 'Bruselas', voyage: 'Bruselas', tourism: 'https://www.visit.brussels' },
   brujas: { key: 'brujas', name: 'Brujas', country: 'BE', aliases: ['brujas', 'brugge', 'bruges'], lat: 51.2093, lon: 3.2247, tz: 'Europe/Brussels', wiki: 'Brujas', voyage: 'Brujas', tourism: 'https://www.visitbruges.be' },
   berlin: { key: 'berlin', name: 'Berlín', country: 'DE', aliases: ['berlin'], lat: 52.52, lon: 13.405, tz: 'Europe/Berlin', wiki: 'Berlín', voyage: 'Berlín', tourism: 'https://www.visitberlin.de' },
+  varsovia: { key: 'varsovia', name: 'Varsovia', country: 'PL', aliases: ['varsovia', 'warszawa', 'warsaw'], lat: 52.2298, lon: 21.0118, tz: 'Europe/Warsaw', wiki: 'Varsovia', voyage: 'Varsovia', tourism: 'https://warsawtour.pl' },
   budapest: { key: 'budapest', name: 'Budapest', country: 'HU', aliases: ['budapest'], lat: 47.4979, lon: 19.0402, tz: 'Europe/Budapest', wiki: 'Budapest', voyage: 'Budapest', tourism: 'https://www.budapestinfo.hu' },
   viena: { key: 'viena', name: 'Viena', country: 'AT', aliases: ['viena', 'wien', 'vienna'], lat: 48.2082, lon: 16.3738, tz: 'Europe/Vienna', wiki: 'Viena', voyage: 'Viena', tourism: 'https://www.wien.info' },
   bratislava: { key: 'bratislava', name: 'Bratislava', country: 'SK', aliases: ['bratislava'], lat: 48.1486, lon: 17.1077, tz: 'Europe/Bratislava', wiki: 'Bratislava', voyage: 'Bratislava', tourism: 'https://www.visitbratislava.com' },
@@ -182,11 +202,76 @@ export const HOLIDAYS: { md: string; country: CountryCode; text: string }[] = [
   { md: '12-08', country: 'ES', text: 'Feriado nacional en España (Inmaculada Concepción): muchas tiendas y algunos museos cierran o abren con horario reducido.' },
 ]
 
-/** Primera ciudad del catálogo mencionada en el texto (por posición). */
+// ---------- Ciudades fuera del catálogo ----------
+// Si en la planilla aparece una ciudad nueva, se busca una vez en Open-Meteo (país, coordenadas
+// y zona horaria) y queda guardada en el teléfono.
+
+const GEO_KEY = 'eurotrip_geo_v1'
+let geoMemo: Record<string, City> | null = null
+const geoCities = () => (geoMemo ??= readJson<Record<string, City>>(GEO_KEY, {}))
+
+export function getCity(key?: string | null): City | undefined {
+  return key ? (CITIES[key] ?? geoCities()[key]) : undefined
+}
+
+const allCities = () => [...Object.values(CITIES), ...Object.values(geoCities())]
+
+export async function geocodeCity(raw: string): Promise<City | null> {
+  const query = raw.replace(/\([^)]*\)/g, '').trim()
+  if (!query || query.split(/\s+/).length > 4) return null
+  const params = new URLSearchParams({ name: query, count: '1', language: 'es', format: 'json' })
+  const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`)
+  if (!res.ok) return null
+  const r = (await res.json()).results?.[0]
+  // Solo se acepta si el nombre coincide: evita que un texto cualquiera se convierta en ciudad.
+  if (!r?.country_code || !norm(r.name).startsWith(norm(query).slice(0, 4))) return null
+  const key = `geo-${norm(r.name).replace(/[^a-z0-9]+/g, '-')}`
+  const city: City = {
+    key, name: r.name, country: r.country_code, aliases: [...new Set([norm(query), norm(r.name)])],
+    lat: r.latitude, lon: r.longitude, tz: r.timezone ?? 'Europe/Paris', wiki: r.name, voyage: r.name,
+  }
+  geoCities()[key] = city
+  writeJson(GEO_KEY, geoCities())
+  return city
+}
+
+const EURO = new Set('AT BE BG HR CY EE FI FR DE GR IE IT LV LT LU MT NL PT SK SI ES AD MC SM VA ME XK'.split(' '))
+const LOCAL_CURRENCY: Record<string, string> = {
+  PL: 'PLN', HU: 'HUF', CZ: 'CZK', DK: 'DKK', SE: 'SEK', NO: 'NOK', CH: 'CHF', GB: 'GBP', RO: 'RON', IS: 'ISK', RS: 'RSD', TR: 'TRY', BA: 'BAM', AL: 'ALL', MK: 'MKD', MD: 'MDL', UA: 'UAH', CL: 'CLP',
+}
+const genericCountries: Record<string, Country> = {}
+
+/** Datos del país: los del catálogo o, si no está, lo básico (nombre, bandera, moneda y 112). */
+export function getCountry(code?: string | null): Country | undefined {
+  if (!code) return undefined
+  if (COUNTRIES[code]) return COUNTRIES[code]
+  const cc = code.toUpperCase()
+  genericCountries[cc] ??= {
+    code: cc,
+    name: (() => {
+      try {
+        return new Intl.DisplayNames(['es'], { type: 'region' }).of(cc) ?? cc
+      } catch {
+        return cc
+      }
+    })(),
+    flag: String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)),
+    currency: EURO.has(cc) ? 'EUR' : (LOCAL_CURRENCY[cc] ?? ''),
+    language: '',
+    phrases: [],
+    emergency: [{ label: 'Emergencias', number: '112' }],
+    plugs: '',
+    tips: [],
+    consulate: { label: 'Red consular de Chile', url: 'https://www.chile.gob.cl' },
+  }
+  return genericCountries[cc]
+}
+
+/** Primera ciudad conocida mencionada en el texto (por posición). */
 export function findCity(text: string, exclude: (string | null)[] = []): string | null {
   const n = norm(text)
   let best: { key: string; at: number } | null = null
-  for (const c of Object.values(CITIES)) {
+  for (const c of allCities()) {
     if (exclude.includes(c.key)) continue
     for (const a of c.aliases) {
       const at = findWord(n, a)
@@ -198,11 +283,11 @@ export function findCity(text: string, exclude: (string | null)[] = []): string 
 
 export function cityRef(raw: string): CityRef {
   const key = findCity(raw)
-  return { key, name: key ? CITIES[key].name : raw.trim() }
+  return { key, name: key ? getCity(key)!.name : raw.trim() }
 }
 
 export function countryOf(ref?: CityRef | null): Country | undefined {
-  return ref?.key ? COUNTRIES[CITIES[ref.key].country] : undefined
+  return getCountry(getCity(ref?.key)?.country)
 }
 
 export function flagOf(ref?: CityRef | null): string {

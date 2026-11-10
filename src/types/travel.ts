@@ -28,6 +28,12 @@ export interface Activity {
   kind: 'place' | 'flight' | 'train' | 'arrive' | 'rest' | 'other'
   text: string
   place?: Place
+  /** Lugar que no está en el catálogo: se busca su guía en Wikipedia. */
+  search?: string
+  /** Detalle escrito en la planilla (horarios, precios, etc.). */
+  note?: string
+  /** "Mañana", "Tarde" o "Noche". */
+  when?: string
   book?: boolean
   optional?: boolean
   /** Uno u otro ("Rijksmuseum o Museo Van Gogh"). */
@@ -118,6 +124,8 @@ export interface Day {
   lodgingNote?: string
   companion?: Companion
   alerts: string[]
+  /** Notas de la planilla que no son actividades ("verificar…", "según…"). */
+  notes: string[]
 }
 
 export interface Stay {
@@ -157,7 +165,7 @@ export interface Expense {
   category: string
 }
 
-export type Currency = 'EUR' | 'CLP' | 'USD' | 'HUF'
+export type Currency = 'EUR' | 'CLP' | 'USD' | 'HUF' | 'PLN'
 
 /** Unidades de cada moneda por 1 EUR. */
 export type Rates = Record<Currency, number> & { updated?: number }

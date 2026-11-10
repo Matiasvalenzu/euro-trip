@@ -16,7 +16,7 @@ interface Props {
   onRefresh: () => void
 }
 
-const GUIDE_TITLES = [...new Set([...PLACES.map((p) => p.wiki ?? p.name), ...Object.values(CITIES).map((c) => c.wiki)])]
+const GUIDE_TITLES = [...new Set([...PLACES.flatMap((p) => (p.wiki ? [p.wiki] : [])), ...Object.values(CITIES).map((c) => c.wiki)])]
 
 export function SettingsSheet({ open, onClose, sheetId, syncing, onChangeSheet, onRefresh }: Props) {
   const [input, setInput] = useState(sheetId)

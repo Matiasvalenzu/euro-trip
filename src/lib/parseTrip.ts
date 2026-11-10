@@ -1,7 +1,7 @@
 import type { Activity, Block, CityRef, Companion, Day, Leg, LegLine, Lodging, LodgingOption, Mode, Place, Stay, Trip } from '../types/travel'
-import { CITIES, HOLIDAYS, cityRef, countryOf, findCity } from '../data/destinations'
+import { HOLIDAYS, cityRef, countryOf, findCity, getCity } from '../data/destinations'
 import { PLACES } from '../data/places'
-import { capitalize, cleanCell, isWordChar, norm, tidy } from './text'
+import { capitalize, cleanCell, isWordChar, maskParens, norm, sentences, splitOutside, stripParens, tidy } from './text'
 import { WEEKDAY_PLURAL, addDays, parseDayMonth, parseMinutes, toIso, weekdayOf } from './dates'
 
 type Col = 'dia' | 'fecha' | 'companion' | 'etapa' | 'actividad' | 'transporte' | 'duracion' | 'valor' | 'clima' | 'temperatura' | 'ropa' | 'detalle' | 'alojamiento'
@@ -19,94 +19,183 @@ const headerKey = (h: string) => norm(h).replace(/[^a-z0-9]/g, '')
 // ---------- Actividades ----------
 
 const STOP = new Set(
-  'a al con de del dia e el en hace la las los min o opcional para paseo por recorrido reserva reservar anticipacion si tarde manana noche temprano tren excursion iluminados iluminado iluminada atardecer castillo museo vistas y visita'.split(' '),
+  'a al con de del dia e el en hace la las los luego min o opcional para paseo por recorrido reserva reservar anticipacion si tarde manana noche temprano tren excursion iluminados iluminado iluminada atardecer castillo museo vistas y visita'.split(' '),
 )
+
+/** Etiquetas al inicio de una oración: "Mañana:", "Tarde en la…", "Opcional:", "Luego…". */
+const LEAD = /^(ma[ñn]ana|tarde|noche|luego|despu[eé]s|opcional|si queda tiempo|si hay tiempo|excursi[oó]n)\b\s*[:,]?\s*(?:en\s+(?:la|el|los|las)\s+)?/i
+/** Oraciones que son avisos y no actividades. */
+const NOTICE = /cerrad|\bcierra|verificar|por confirmar|\bsegun\b|estaria/
+const LOGISTICS = /^(vuelo|vuelta|tren|bus\b|metro|tranv|traslado|transfer|llegada|llegar|salir|salida|check|dormir|descans|d[ií]a\b|volver|regreso|temprano|desayuno|almuerzo|cena|compras|tiempo|libre)/i
 
 function plainKind(t: string): Activity['kind'] {
   const n = norm(t)
   if (/dormir|descans|jet lag/.test(n)) return 'rest'
-  if (/vuelo|avion|aeropuerto/.test(n)) return 'flight'
   if (/\btren\b/.test(n)) return 'train'
+  if (/vuelo|avion|aeropuerto/.test(n)) return 'flight'
   if (/llegada|check-?in|check-?out/.test(n)) return 'arrive'
   return 'other'
 }
 
-const plain = (t: string): Activity => {
-  const text = capitalize(tidy(t))
-  return { kind: plainKind(text), text }
+/** ¿Parece un lugar con nombre propio aunque no esté en el catálogo? */
+function placeLike(text: string): boolean {
+  const t = stripParens(text)
+  if (!t || t.split(/\s+/).length > 6 || LOGISTICS.test(t)) return false
+  const caps = t.match(/\p{Lu}[\p{L}'’-]+/gu) ?? []
+  return caps.some((w) => !/^[A-Z]{2,4}$/.test(w) && !findCity(w))
 }
 
-export function extractActivities(text: string, cityKeys: string[], weekday: number): Activity[] {
-  const out: Activity[] = []
-  const seen = new Set<string>()
+interface Hit {
+  s: number
+  e: number
+  p: Place
+}
+
+/** Lugares del catálogo mencionados fuera de paréntesis, sin solaparse (gana el alias más largo). */
+function findHits(text: string, candidates: Place[]): Hit[] {
+  const n = norm(maskParens(text))
+  const hits: Hit[] = []
+  for (const p of candidates) {
+    for (const a of p.aliases) {
+      for (let i = n.indexOf(a); i !== -1; i = n.indexOf(a, i + 1)) {
+        if (!isWordChar(n[i - 1]) && !isWordChar(n[i + a.length])) hits.push({ s: i, e: i + a.length, p })
+      }
+    }
+  }
+  hits.sort((x, y) => x.s - y.s || y.e - y.s - (x.e - x.s))
+  const picked: Hit[] = []
+  let end = -1
+  for (const h of hits) {
+    if (h.s >= end) {
+      picked.push(h)
+      end = h.e
+    }
+  }
+  return picked
+}
+
+const joinNote = (...parts: (string | undefined)[]) =>
+  parts
+    .map((p) => (p ? tidy(p) : ''))
+    .filter(Boolean)
+    .join(' · ') || undefined
+
+/**
+ * Convierte "Actividad / Notas" en una lista: lugares con guía, pasos del día y avisos.
+ * Respeta paréntesis (su contenido queda como nota del lugar que lo precede).
+ */
+export function extractActivities(text: string, cityKeys: string[], weekday: number, cityName: string) {
+  const activities: Activity[] = []
+  const notes: string[] = []
+  const alerts: string[] = []
+  const byPlace = new Map<string, Activity>()
   const candidates = PLACES.filter((p) => cityKeys.includes(p.city)).sort((a, b) => cityKeys.indexOf(a.city) - cityKeys.indexOf(b.city))
 
-  const segments = text.replace(/^\s*excursi[oó]n:\s*/i, '').split(/[.;,](?=\s|$)|\s+y\s+|\s+e\s+/)
-  for (const raw of segments) {
-    const seg = tidy(raw ?? '')
-    if (!seg) continue
-    const n = norm(seg)
-
-    const hits: { s: number; e: number; p: Place }[] = []
-    for (const p of candidates) {
-      for (const a of p.aliases) {
-        for (let i = n.indexOf(a); i !== -1; i = n.indexOf(a, i + 1)) {
-          if (!isWordChar(n[i - 1]) && !isWordChar(n[i + a.length])) hits.push({ s: i, e: i + a.length, p })
-        }
-      }
-    }
-    hits.sort((x, y) => x.s - y.s || y.e - y.s - (x.e - x.s))
-    const picked: typeof hits = []
-    let end = -1
-    for (const h of hits) {
-      if (h.s >= end) {
-        picked.push(h)
-        end = h.e
-      }
-    }
-
-    if (!picked.length) {
-      out.push(plain(seg))
+  for (const sentence of sentences(text)) {
+    const outside = norm(maskParens(sentence))
+    if (NOTICE.test(outside)) {
+      ;(/cerrad|\bcierra/.test(outside) ? alerts : notes).push(sentence)
       continue
     }
 
-    // Texto que sobra fuera de los lugares reconocidos (p. ej. "Día libre compras tapas").
-    let left = ''
-    let pos = 0
-    for (const h of picked) {
-      left += seg.slice(pos, h.s) + ' '
-      pos = h.e
+    let rest = sentence
+    let when: string | undefined
+    let optional = false
+    const lead = rest.match(LEAD)
+    if (lead) {
+      const w = norm(lead[1])
+      when = w === 'manana' ? 'Mañana' : w === 'tarde' ? 'Tarde' : w === 'noche' ? 'Noche' : undefined
+      optional = /opcional|si queda|si hay/.test(w)
+      rest = rest.slice(lead[0].length)
     }
-    left += seg.slice(pos)
-    const words = norm(left).split(/[^a-z0-9ñœ]+/).filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w))
-    if (words.length >= 2) out.push(plain(left))
+    if (/^o\s/i.test(rest)) {
+      optional = true
+      rest = rest.slice(2)
+    }
 
-    const optional = /^(o|opcional)\b/i.test(seg)
-    const reserveAt = n.indexOf('reserv')
-    let bookIdx = -1
-    if (reserveAt >= 0) {
-      bookIdx = 0
-      picked.forEach((h, k) => {
-        if (h.e <= reserveAt) bookIdx = k
+    // "Lugar: detalle" → el detalle queda como nota del lugar.
+    let tail = ''
+    const colon = maskParens(rest).search(/(?<!\d):(?!\d)/)
+    if (colon > 0 && findHits(rest.slice(0, colon), candidates).length) {
+      tail = rest.slice(colon + 1)
+      rest = rest.slice(0, colon)
+    }
+
+    const hits = findHits(rest, candidates)
+    const created: Activity[] = []
+    const items = splitOutside(rest, /[,;]|\s+(?:y|e)\s+/g, hits.map((h): [number, number] => [h.s, h.e]))
+    for (const item of items) {
+      const end = item.start + item.text.length
+      const own = hits.filter((h) => h.s >= item.start && h.e <= end)
+
+      if (!own.length) {
+        const clean = capitalize(tidy(item.text))
+        if (!clean) continue
+        const search = placeLike(item.text) ? `${stripParens(item.text)} ${cityName}` : undefined
+        const a: Activity = { kind: search ? 'place' : plainKind(clean), text: clean, search, when, optional: optional || undefined }
+        activities.push(a)
+        created.push(a)
+        continue
+      }
+
+      const parens = [...item.text.matchAll(/\(([^()]*)\)/g)]
+        .map((m) => ({ at: item.start + (m.index ?? 0), text: m[1] }))
+        .filter((p) => !/^reserva(r)?( con anticipacion)?$/.test(norm(p.text).trim()))
+      let left = ''
+      let pos = item.start
+      for (const h of own) {
+        left += rest.slice(pos, h.s) + ' '
+        pos = h.e
+      }
+      left += rest.slice(pos, end)
+      const words = norm(maskParens(left))
+        .split(/[^a-z0-9ñœ]+/)
+        .filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w))
+      const context = words.length >= 2 ? stripParens(item.text) : undefined
+
+      const choice = own.some((h, k) => k > 0 && /(^|[\s/])o(\s|$)/i.test(rest.slice(own[k - 1].e, h.s)))
+      const reserveAt = norm(item.text).indexOf('reserv')
+      let bookIdx = -1
+      if (reserveAt >= 0) {
+        bookIdx = 0
+        own.forEach((h, k) => {
+          if (h.e - item.start <= reserveAt) bookIdx = k
+        })
+      }
+
+      own.forEach((h, k) => {
+        const next = own[k + 1]?.s ?? Infinity
+        const mine = parens.filter((p) => (p.at >= h.e && p.at < next) || (k === 0 && p.at < h.s)).map((p) => p.text)
+        const note = joinNote(k === 0 ? context : undefined, ...mine)
+        const existing = byPlace.get(h.p.id)
+        if (existing) {
+          existing.note = joinNote(existing.note, note)
+          return
+        }
+        const a: Activity = {
+          kind: 'place',
+          text: h.p.name,
+          place: h.p,
+          note,
+          when,
+          optional: optional || undefined,
+          choice: choice || undefined,
+          book: h.p.book || k === bookIdx || undefined,
+          closedToday: h.p.closed?.includes(weekday) ? `Cierra los ${WEEKDAY_PLURAL[weekday]}` : undefined,
+        }
+        byPlace.set(h.p.id, a)
+        activities.push(a)
+        created.push(a)
       })
     }
-    // "Rijksmuseum o Museo Van Gogh": lugares alternativos.
-    const choice = picked.some((h, k) => k > 0 && /(^|\s)o(\s|$)/i.test(seg.slice(picked[k - 1].e, h.s)))
-    picked.forEach((h, k) => {
-      if (seen.has(h.p.id)) return
-      seen.add(h.p.id)
-      out.push({
-        kind: 'place',
-        text: h.p.name,
-        place: h.p,
-        book: h.p.book || k === bookIdx,
-        optional,
-        choice,
-        closedToday: h.p.closed?.includes(weekday) ? `Cierra los ${WEEKDAY_PLURAL[weekday]}` : undefined,
-      })
-    })
+
+    if (tail.trim()) {
+      const last = created[created.length - 1]
+      if (last) last.note = joinNote(last.note, tail)
+      else notes.push(tidy(tail))
+    }
   }
-  return out
+  return { activities, notes, alerts }
 }
 
 // ---------- Tramos ----------
@@ -119,10 +208,22 @@ function detectMode(s: string): Mode {
   return 'tren'
 }
 
-const CARRIER_RE = /\b(LATAM|Air France|Wizz Air|Ryanair|Iberia|Vueling|KLM|Lufthansa|easyJet|Eurostar|Eurocity Direct|Eurocity|ICE|Railjet|IC|EC|Rodalies R\d+(?: Sud)?|FlixBus|TGV|Ouigo)\b/
+const CARRIER_RE =
+  /\b(LATAM|Air France|Wizz Air|Ryanair|Iberia|Vueling|KLM|Lufthansa|LOT|Brussels Airlines|Eurowings|Austrian|SWISS|TAP|ITA Airways|Transavia|easyJet|Norwegian|SAS|Finnair|Eurostar|Eurocity Direct|Eurocity|ICE|Railjet|IC|EC|Rodalies R\d+(?: Sud)?|FlixBus|TGV|Ouigo|RegioJet|Nightjet)\b/
 
-function splitSentences(s: string): string[] {
-  return s.split(/\.\s+(?=[A-ZÁÉÍÓÚ])/).map((x) => tidy(x)).filter(Boolean)
+const splitSentences = (s: string) => sentences(s)
+
+/** Duración del tramo principal: "Tren BRU ~17-20 min; vuelo 2h; WAW-centro ~20-30 min" → "2h". */
+function pickDuration(col: string, mode: Mode): { main?: string; parts: string[] } {
+  const parts = col
+    .split(/;\s*/)
+    .map((p) => tidy(p))
+    .filter(Boolean)
+  if (!parts.length) return { parts }
+  const kw = mode === 'avion' ? /vuelo|avi[oó]n/i : mode === 'bus' ? /\bbus/i : /tren/i
+  const part = parts.length > 1 ? (parts.find((p) => kw.test(p)) ?? parts[0]) : parts[0]
+  const token = part.match(/~?\d+\s*h(?:\s*\d{1,2})?(?:\s*c\/u)?|~?\d+\s*min(?:\s*c\/u)?/i)?.[0]
+  return { main: token ?? (part.length <= 14 ? part : undefined), parts }
 }
 
 type LegContext = Pick<Day, 'index' | 'n' | 'date' | 'kind' | 'from' | 'to' | 'excursion'> & { base?: CityRef }
@@ -145,7 +246,7 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
     const key = findCity(detail.split('→')[1] ?? '', [day.base.key])
     if (!key) return undefined
     from = day.base
-    to = { key, name: CITIES[key].name }
+    to = { key, name: getCity(key)!.name }
     roundTrip = true
     optional = /opcional/i.test(detail)
   }
@@ -163,7 +264,11 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
     else splitSentences(p).forEach((s, i) => lines.push({ kind: i === 0 ? 'segment' : 'note', text: s }))
   }
 
-  const segText = parts.filter((p) => !/^(escala|total)/i.test(p)).join(' ')
+  // Horarios solo de los segmentos principales (no de notas como "el primero sale a las 04:14").
+  const segText = lines
+    .filter((l) => l.kind === 'segment')
+    .map((l) => l.text)
+    .join(' ')
   const times = segText.match(/\b\d{1,2}:\d{2}\b/g) ?? []
   const depart = times[0]?.padStart(5, '0')
   const arrive = times.length > 1 ? times[times.length - 1].padStart(5, '0') : undefined
@@ -175,7 +280,10 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
     via = `Escala en ${city ? `${city} (${layover[1]})` : layover[1]} · ${layover[2]}`
   }
 
-  const durationRaw = cleanCell(c.duracion).replace(/\s*vuelo$/i, '') || main.match(/\((~?\d+h\d*|~?\d+\s?min)/)?.[1]
+  const mode = detectMode(`${cleanCell(c.transporte)} ${detail}`)
+  const dur = pickDuration(cleanCell(c.duracion), mode)
+  const durationRaw = dur.main ?? main.match(/\((~?\d+\s?h\s?\d*|~?\d+\s?min)/)?.[1]
+  if (dur.parts.length > 1) lines.push({ kind: 'note', text: `Tiempos: ${dur.parts.join(' · ')}` })
   const costRaw = cleanCell(c.valor)
   const costNote = costRaw.match(/\(([^)]*)\)/)?.[1]
   const status = /cotizad/i.test(costRaw)
@@ -186,14 +294,14 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
         ? 'Estimado'
         : undefined
 
-  const modeLabel = cleanCell(c.transporte) || (detectMode(detail) === 'avion' ? 'Avión' : 'Tren')
+  const modeLabel = cleanCell(c.transporte) || (mode === 'avion' ? 'Avión' : 'Tren')
   const minutes = parseMinutes(durationRaw)
 
   return {
     id: `leg-${day.n}`,
     dayIndex: day.index,
     date: day.date,
-    mode: detectMode(`${modeLabel} ${detail}`),
+    mode,
     modeLabel,
     from,
     to,
@@ -258,7 +366,7 @@ export function parseLodging(text: string): Lodging | undefined {
     confirmed: /reservad|confirmad/i.test(status),
     meta: m[2],
     name: tidy(nameRaw),
-    price: body.match(/total(?: final| pagado)?\s*(?:de\s*)?(\$?\s?[\d.,]+\s*(?:USD|EUR|CLP|€)?)/i)?.[1]?.trim(),
+    price: body.match(/total(?: final| pagado)?\s*(?:de\s*)?(\$?\s?[\d.,]+\s*(?:USD|EUR|CLP|PLN|HUF|€)?)/i)?.[1]?.trim(),
     paid: /pagad/i.test(body),
     code: body.match(/c[oó]digo(?: de reserva)?:?\s*([A-Z0-9]{5,})/i)?.[1],
     refund: body.match(/((?:reembolso|cancelaci[oó]n)[^.\n]*)/i)?.[1],
@@ -364,7 +472,8 @@ export function buildTrip(rows: string[][]): Trip {
     }
 
     const country = countryOf(excursion ?? city)
-    const alerts: string[] = []
+    const plan = extractActivities(cells.actividad, cityKeys, weekday, (excursion ?? city).name)
+    const alerts: string[] = [...plan.alerts]
     const holiday = HOLIDAYS.find((h) => h.md === date.slice(5) && h.country === country?.code)
     if (holiday) alerts.push(holiday.text)
     if (weekday === 0 && country?.sundayNote) alerts.push(country.sundayNote)
@@ -382,7 +491,8 @@ export function buildTrip(rows: string[][]): Trip {
       excursion,
       sleep,
       summary: cells.actividad,
-      activities: extractActivities(cells.actividad, cityKeys, weekday),
+      activities: plan.activities,
+      notes: plan.notes,
       localTransport: kind === 'stay' ? cleanCell(cells.transporte) || undefined : undefined,
       localCost: kind === 'stay' && !leg ? cleanCell(cells.valor) || undefined : undefined,
       leg,
@@ -412,13 +522,34 @@ export function buildTrip(rows: string[][]): Trip {
   const stayOf = (i: number) => stays.find((s) => s.dayIndexes.includes(i))
   for (const d of days) {
     if (!d.lodgingNote) continue
+    const own = stayOf(d.index)
+    const prev = d.kind === 'transfer' ? stayOf(d.index - 1) : undefined
     const parsed = parseLodging(d.lodgingNote)
     if (parsed) {
-      const s = stayOf(d.index)
-      if (s && !s.lodging) s.lodging = parsed
-    } else {
-      const s = stayOf(d.kind === 'transfer' ? d.index - 1 : d.index)
-      s?.notes.push(d.lodgingNote)
+      if (own && !own.lodging) own.lodging = parsed
+      continue
+    }
+    // Texto libre: cada oración va a la estadía de la ciudad que menciona
+    // ("Checkout…" a la que se deja; "Alojamiento en Varsovia: …" a Varsovia).
+    for (const s of sentences(d.lodgingNote)) {
+      const key = findCity(s)
+      const target = key
+        ? ([own, prev].find((x) => x?.city.key === key) ?? own)
+        : /^(check-?out|misma reserva)/i.test(s)
+          ? (prev ?? own)
+          : own
+      if (!target) continue
+      if (target.lodging && norm(s).includes(norm(target.lodging.name))) continue
+      if (!target.lodging && !/^(check-?out|misma reserva)|por reservar|pendiente|sin reserva|no hay reserva|\bllega|opci[oó]n|cotiz/i.test(s)) {
+        const body = s.replace(/^alojamiento(?:\s+en\s+[^:]+)?:\s*/i, '').replace(/^en\s+/i, '')
+        const name = capitalize(tidy(body.replace(/\([^)]*\)/g, '')))
+        const extra = body.match(/\(([^)]*)\)/)?.[1]
+        if (name) {
+          target.lodging = { status: 'Confirmado', confirmed: true, name, price: extra ? capitalize(extra) : undefined, paid: false, options: [] }
+          continue
+        }
+      }
+      target.notes.push(s)
     }
   }
 

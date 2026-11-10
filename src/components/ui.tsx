@@ -82,7 +82,7 @@ export function LinkButton({ href, children, icon, primary = false, className = 
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3.5 text-[14px] font-semibold transition active:scale-[0.98] ${
+      className={`inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-3 text-[14px] font-semibold transition active:scale-[0.98] ${
         primary ? 'bg-accent text-accent-ink' : 'border border-line bg-surface text-ink'
       } ${className}`}
     >
