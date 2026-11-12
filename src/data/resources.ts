@@ -1,3 +1,5 @@
+import type { Trip } from '../types/travel'
+
 export interface LinkItem {
   name: string
   url: string
@@ -54,8 +56,32 @@ export const LINK_GROUPS: { title: string; items: LinkItem[] }[] = [
   },
 ]
 
+export const TRAVEL_INSURANCE = {
+  title: 'Seguro Schengen · Visa / AXA',
+  number: '16011-0001-69-2610638630',
+  validFrom: '17/11/2026',
+  validTo: '16/01/2027',
+  phones: [
+    { label: 'Fuera de EE.UU. (cobro revertido)', number: '+1 (303) 967-1098' },
+    { label: 'Norteamérica', number: '+1 (800) 396 9665' },
+  ],
+} as const
+
+export function insuranceInfo(trip: Trip | null) {
+  const doc =
+    trip?.documents.find(
+      (d) => d.number === TRAVEL_INSURANCE.number || /seguro|visa|axa|schengen/i.test(`${d.title} ${d.raw}`),
+    ) ?? trip?.documents[0]
+  return {
+    doc,
+    number: doc?.number ?? TRAVEL_INSURANCE.number,
+    validFrom: doc?.validFrom ?? TRAVEL_INSURANCE.validFrom,
+    validTo: doc?.validTo ?? TRAVEL_INSURANCE.validTo,
+  }
+}
+
 export const ESSENTIALS: { id: string; title: string; note: string; url?: string }[] = [
-  { id: 'seguro', title: 'Contratar seguro de viaje', note: 'Con asistencia médica, cancelaciones y equipaje.' },
+  { id: 'seguro', title: 'Certificado Schengen de Visa listo', note: 'Vigente 17/11/2026–16/01/2027. Ábrelo desde SOS o Guía.' },
   { id: 'etias', title: 'Revisar si ETIAS ya es obligatorio', note: 'Autorización online de la UE para viajeros sin visa, como los chilenos.', url: ETIAS_URL },
   { id: 'esim', title: 'Comprar y activar eSIM europea', note: 'Un plan que cubra los 8 países del viaje.' },
   { id: 'pasaporte', title: 'Pasaportes vigentes y copias digitales', note: 'Guarda copias en dos nubes distintas.' },

@@ -27,6 +27,8 @@ La app lee **la primera pestaña** de la planilla (una fila por día) y arma tod
 | `Transporte`, `Duración aprox.`, `Valor vuelo`, `Detalle de vuelo` | Tramos: tipo (avión/tren), horarios, duración, escalas, costo y alternativas. |
 | `Clima`, `Temperatura`, `Vestimenta recomendada` | Información del día (junto al pronóstico real de Open-Meteo). |
 | `Alojamiento` | Texto tipo `Reservado (22-24 nov, …): Nombre — total pagado $… Código de reserva …` + enlace. |
+| `Ubicaciones (Google Maps)` | Enlaces directos de lugares, estaciones y alojamientos para cada día. |
+| `Documentos` | Enlaces a documentos del viaje (ej. certificado de seguro Schengen) accesibles desde SOS y Guía. |
 | `Toño` | Dónde está Toño cada día; la app marca cuando coinciden. |
 
 Cambios en la planilla:

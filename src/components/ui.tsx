@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Bus, Check, Copy, ExternalLink, Plane, Ship, TrainFront, X } from 'lucide-react'
 import type { Mode } from '../types/travel'
 
@@ -157,11 +157,16 @@ export function Empty({ icon, title, children }: { icon: ReactNode; title: strin
 
 /** Panel inferior deslizable. */
 export function Sheet({ open, onClose, label, children, full = false, z = 'z-50' }: { open: boolean; onClose: () => void; label: string; children: ReactNode; full?: boolean; z?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const dialogs = document.querySelectorAll('[role="dialog"]')
+      if (dialogs[dialogs.length - 1] === ref.current) onClose()
+    }
     window.addEventListener('keydown', onKey)
     return () => {
       document.body.style.overflow = prev
@@ -171,7 +176,7 @@ export function Sheet({ open, onClose, label, children, full = false, z = 'z-50'
 
   if (!open) return null
   return (
-    <div className={`fixed inset-0 ${z} flex items-end justify-center`} role="dialog" aria-modal="true" aria-label={label}>
+    <div ref={ref} className={`fixed inset-0 ${z} flex items-end justify-center`} role="dialog" aria-modal="true" aria-label={label}>
       <div className="absolute inset-0 bg-black/50 animate-fade" onClick={onClose} />
       <div className={`relative flex w-full max-w-lg flex-col rounded-t-3xl border-t border-line bg-bg shadow-2xl animate-sheet ${full ? 'h-[94dvh]' : 'max-h-[92dvh]'}`}>
         <div className="flex justify-center pt-2.5 pb-1">

@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react'
 import {
   Banknote, ChevronDown, ChevronRight, Clock, Coins, ExternalLink, FileSpreadsheet, FileText, Info, Languages,
-  ListChecks, Map as MapIcon, Phone, Pill, Plug, ShieldAlert, Smartphone, Ticket, TrainFront,
+  ListChecks, Map as MapIcon, Phone, Pill, Plug, ShieldAlert, ShieldCheck, Smartphone, Ticket, TrainFront,
 } from 'lucide-react'
 import type { Trip } from '../../types/travel'
 import { PLUG_NOTE, getCity, getCountry, type CountryCode } from '../../data/destinations'
 import { currencyLabel } from '../../lib/money'
-import { LINK_GROUPS, tipMeta } from '../../data/resources'
+import { LINK_GROUPS, TRAVEL_INSURANCE, insuranceInfo, tipMeta } from '../../data/resources'
 import { Checklist } from '../Checklist'
-import { Card, PageTitle, Row, SectionTitle } from '../ui'
+import { Button, Card, CopyButton, PageTitle, Row, SectionTitle } from '../ui'
 
 const TIP_ICONS: Record<ReturnType<typeof tipMeta>['icon'], ReactNode> = {
   doc: <FileText className="size-4" />,
@@ -24,7 +24,8 @@ const TIP_ICONS: Record<ReturnType<typeof tipMeta>['icon'], ReactNode> = {
   info: <Info className="size-4" />,
 }
 
-export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: string; onCity: (key: string) => void }) {
+export function GuideView({ trip, sheetLink, onCity, onOpenInsurance }: { trip: Trip; sheetLink: string; onCity: (key: string) => void; onOpenInsurance: () => void }) {
+  const ins = insuranceInfo(trip)
   const cityKeys: string[] = []
   for (const d of trip.days) {
     for (const ref of [d.city, d.excursion, d.leg?.to]) {
@@ -36,6 +37,23 @@ export function GuideView({ trip, sheetLink, onCity }: { trip: Trip; sheetLink: 
   return (
     <div className="space-y-6">
       <PageTitle title="Guía" subtitle="Pendientes, ciudades, consejos y lo básico de cada país" />
+
+      <Card className="p-4">
+        <div className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-2">
+          <ShieldCheck className="size-4 text-accent" />
+          <span>{TRAVEL_INSURANCE.title}</span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2">
+          <span className="font-mono text-[14px] font-semibold tabular-nums">{ins.number}</span>
+          <CopyButton text={ins.number} />
+        </div>
+        <div className="text-[13px] text-ink-2 tabular-nums">
+          Vigencia {ins.validFrom}–{ins.validTo}
+        </div>
+        <Button primary onClick={onOpenInsurance} icon={<FileText className="size-4" />} className="mt-3 w-full">
+          Ver certificado de seguro
+        </Button>
+      </Card>
 
       <Card className="p-4">
         <SectionTitle icon={<ListChecks className="size-4" />}>Antes de viajar</SectionTitle>

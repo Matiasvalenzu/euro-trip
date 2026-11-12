@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { BedDouble, ExternalLink, Landmark, Phone, Plus, Trash, UserRound } from 'lucide-react'
+import { BedDouble, ExternalLink, FileText, Landmark, Phone, Plus, ShieldCheck, Trash, UserRound } from 'lucide-react'
 import type { Day, Trip } from '../types/travel'
 import { countryOf, getCity, getCountry, type CountryCode } from '../data/destinations'
+import { TRAVEL_INSURANCE, insuranceInfo } from '../data/resources'
 import { useStored } from '../hooks/useStored'
 import { Button, Card, CopyButton, Eyebrow, Sheet } from './ui'
 
@@ -14,7 +15,7 @@ interface Contact {
 
 const tel = (n: string) => `tel:${n.replace(/[^0-9+]/g, '')}`
 
-export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; onClose: () => void; trip: Trip | null; day?: Day }) {
+export function EmergencySheet({ open, onClose, trip, day, onOpenInsurance }: { open: boolean; onClose: () => void; trip: Trip | null; day?: Day; onOpenInsurance: () => void }) {
   const ref = day && (day.excursion ?? (day.city.key === 'santiago' ? (day.to?.key !== 'santiago' ? day.to : day.from) : day.city))
   const current = countryOf(ref)?.code ?? 'NL'
   const [picked, setPicked] = useState<CountryCode | null>(null)
@@ -26,6 +27,7 @@ export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; on
     : []
 
   const stay = day && trip?.stays.find((s) => s.dayIndexes.includes(day.index))
+  const ins = insuranceInfo(trip)
 
   const [contacts, setContacts] = useStored<Contact[]>('eurotrip_contactos_v1', [])
   const [form, setForm] = useState({ name: '', phone: '', note: '' })
@@ -41,6 +43,21 @@ export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; on
     <Sheet open={open} onClose={onClose} label="Emergencias">
       <div className="pt-6">
         <h2 className="font-display text-[30px] font-semibold">Emergencias</h2>
+
+        <Card className="mt-3 p-3.5">
+          <div className="flex items-center gap-2 text-[15px] font-semibold">
+            <ShieldCheck className="size-4 shrink-0 text-accent" />
+            <span>{TRAVEL_INSURANCE.title}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-ink-2">
+            <span className="font-mono font-medium text-ink tabular-nums">{ins.number}</span>
+            <CopyButton text={ins.number} />
+            <span className="text-[12px] text-ink-3 tabular-nums">· {ins.validFrom}–{ins.validTo}</span>
+          </div>
+          <Button primary onClick={onOpenInsurance} icon={<FileText className="size-4" />} className="mt-2.5 w-full">
+            Ver certificado de seguro
+          </Button>
+        </Card>
 
         <a href="tel:112" className="mt-3 flex items-center justify-between gap-4 rounded-3xl bg-danger p-5 text-danger-ink active:scale-[0.99]">
           <div>

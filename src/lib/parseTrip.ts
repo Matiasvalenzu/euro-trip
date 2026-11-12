@@ -1,10 +1,10 @@
-import type { Activity, Block, CityRef, Companion, Day, Leg, LegLine, Lodging, LodgingOption, MapPinLink, Mode, Place, Stay, Trip } from '../types/travel'
+import type { Activity, Block, CityRef, Companion, Day, Leg, LegLine, Lodging, LodgingOption, MapPinLink, Mode, Place, Stay, Trip, TripDocument } from '../types/travel'
 import { HOLIDAYS, cityRef, countryOf, findCity, getCity, mapsUrl } from '../data/destinations'
 import { PLACES } from '../data/places'
 import { capitalize, cleanCell, isWordChar, maskParens, norm, sentences, splitOutside, stripParens, tidy } from './text'
 import { WEEKDAY_PLURAL, addDays, parseDayMonth, parseMinutes, toIso, weekdayOf } from './dates'
 
-type Col = 'dia' | 'fecha' | 'companion' | 'etapa' | 'actividad' | 'transporte' | 'duracion' | 'valor' | 'clima' | 'temperatura' | 'ropa' | 'detalle' | 'alojamiento' | 'ubicaciones'
+type Col = 'dia' | 'fecha' | 'companion' | 'etapa' | 'actividad' | 'transporte' | 'duracion' | 'valor' | 'clima' | 'temperatura' | 'ropa' | 'detalle' | 'alojamiento' | 'ubicaciones' | 'documentos'
 
 // Encabezados de la planilla (normalizados) → columna. Se compara por prefijo.
 const HEADERS: [Col, string[]][] = [
@@ -13,6 +13,7 @@ const HEADERS: [Col, string[]][] = [
   ['valor', ['valor', 'costo', 'precio']], ['clima', ['clima']], ['temperatura', ['temperatura']],
   ['ropa', ['vestimenta', 'ropa']], ['detalle', ['detalle']], ['alojamiento', ['alojamiento']],
   ['ubicaciones', ['ubicaciones', 'mapa', 'googlemaps']],
+  ['documentos', ['documento']],
 ]
 
 const headerKey = (h: string) => norm(h).replace(/[^a-z0-9]/g, '')
@@ -489,6 +490,35 @@ function companionRange(text: string, year: number): [string, string] | null {
   return [toIso(year, start.m, start.d), toIso(year, end.m, end.d)]
 }
 
+// ---------- Documentos del viaje ----------
+
+export function parseDocuments(cell: string): TripDocument[] {
+  const list: TripDocument[] = []
+  for (const rawLine of cell.split('\n')) {
+    const raw = cleanCell(rawLine)
+    if (!raw) continue
+    const url = raw.match(/https?:\/\/\S+/)?.[0]
+    let rest = (url ? raw.replace(url, '') : raw).replace(/:\s*$/, '').trim()
+
+    const aliasMatch = rest.match(/\(([A-Z0-9-]{3,})\)/i)
+    const alias = aliasMatch?.[1]?.trim()
+    if (aliasMatch) rest = rest.replace(aliasMatch[0], ' ')
+
+    const numMatch = rest.match(/(?:\bN[°º.]?\s*|\bNro\.?\s*|#)([A-Z0-9-]{6,})/i) ?? rest.match(/\b(\d+(?:-\d+){2,})\b/)
+    const number = numMatch?.[1]?.trim()
+    if (numMatch) rest = rest.replace(numMatch[0], ' ')
+
+    const validMatch = rest.match(/(?:vigencia\s*:?\s*)?(\d{1,2}\/\d{1,2}\/\d{2,4})\s*(?:[-–—]|al|a)\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)
+    const validFrom = validMatch?.[1]
+    const validTo = validMatch?.[2]
+    if (validMatch) rest = rest.replace(validMatch[0], ' ')
+
+    const title = tidy(rest) || 'Documento'
+    list.push({ title, number, alias, validFrom, validTo, url, raw })
+  }
+  return list
+}
+
 // ---------- Viaje completo ----------
 
 export function buildTrip(rows: string[][]): Trip {
@@ -512,6 +542,8 @@ export function buildTrip(rows: string[][]): Trip {
 
   const days: Day[] = []
   const tips: string[] = []
+  const documents: TripDocument[] = []
+  const seenDocs = new Set<string>()
   let companionText = ''
 
   for (const r of rows.slice(1)) {
@@ -575,6 +607,15 @@ export function buildTrip(rows: string[][]): Trip {
 
     const country = countryOf(excursion ?? city)
     const locations = parseLocations(cells.ubicaciones)
+    if (cells.documentos) {
+      for (const doc of parseDocuments(cells.documentos)) {
+        const key = doc.number || doc.url || doc.raw
+        if (!seenDocs.has(key)) {
+          seenDocs.add(key)
+          documents.push(doc)
+        }
+      }
+    }
     const activeCityName = (excursion ?? city).name
     const plan = extractActivities(cells.actividad, cityKeys, weekday, activeCityName)
     for (const a of plan.activities) {
@@ -719,6 +760,7 @@ export function buildTrip(rows: string[][]): Trip {
     legs,
     stays,
     blocks,
+    documents,
     tips,
     start: days[0]?.date ?? '',
     end: lastDay ? (lastDay.leg?.nextDay ? addDays(lastDay.date, 1) : lastDay.date) : '',

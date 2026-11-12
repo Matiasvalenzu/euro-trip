@@ -8,6 +8,7 @@ import { todayIso } from './lib/dates'
 import { Header } from './components/Header'
 import { BottomNav } from './components/BottomNav'
 import { EmergencySheet } from './components/EmergencyModal'
+import { InsuranceCertSheet } from './components/InsuranceCertSheet'
 import { SettingsSheet } from './components/SettingsModal'
 import { GuideSheet, ReaderSheet, type GuideTarget, type ReaderTarget } from './components/GuideSheet'
 import { LegCard } from './components/LegCard'
@@ -31,6 +32,7 @@ export function App() {
   const [reader, setReader] = useState<ReaderTarget | null>(null)
   const [leg, setLeg] = useState<Leg | null>(null)
   const [sos, setSos] = useState(false)
+  const [insuranceOpen, setInsuranceOpen] = useState(false)
   const [settings, setSettings] = useState(false)
 
   const cityKeys = useMemo(() => {
@@ -56,6 +58,8 @@ export function App() {
   const closeReader = useCallback(() => setReader(null), [])
   const closeLeg = useCallback(() => setLeg(null), [])
   const closeSos = useCallback(() => setSos(false), [])
+  const openInsurance = useCallback(() => setInsuranceOpen(true), [])
+  const closeInsurance = useCallback(() => setInsuranceOpen(false), [])
   const closeSettings = useCallback(() => setSettings(false), [])
 
   const today = todayIso()
@@ -86,7 +90,7 @@ export function App() {
             {tab === 'traslados' && <TransportView trip={trip} />}
             {tab === 'estadias' && <AccommodationView trip={trip} />}
             {tab === 'gastos' && <BudgetView trip={trip} rates={rates} onRefreshRates={refreshRates} onUpdateRates={updateRates} />}
-            {tab === 'guia' && <GuideView trip={trip} sheetLink={sheetUrl(sheetId)} onCity={openCity} />}
+            {tab === 'guia' && <GuideView trip={trip} sheetLink={sheetUrl(sheetId)} onCity={openCity} onOpenInsurance={openInsurance} />}
           </>
         )}
       </main>
@@ -98,7 +102,8 @@ export function App() {
       <Sheet open={!!leg} onClose={closeLeg} label="Detalle del tramo">
         <div className="pt-8">{leg && <LegCard key={leg.id} leg={leg} defaultOpen />}</div>
       </Sheet>
-      <EmergencySheet open={sos} onClose={closeSos} trip={trip} day={currentDay} />
+      <EmergencySheet open={sos} onClose={closeSos} trip={trip} day={currentDay} onOpenInsurance={openInsurance} />
+      <InsuranceCertSheet open={insuranceOpen} onClose={closeInsurance} trip={trip} online={online} />
       <SettingsSheet open={settings} onClose={closeSettings} sheetId={sheetId} syncing={syncing} onChangeSheet={changeSheet} onRefresh={refresh} />
     </div>
   )

@@ -162,11 +162,22 @@ export interface Block {
   label?: string
 }
 
+export interface TripDocument {
+  title: string
+  number?: string
+  alias?: string
+  validFrom?: string
+  validTo?: string
+  url?: string
+  raw: string
+}
+
 export interface Trip {
   days: Day[]
   legs: Leg[]
   stays: Stay[]
   blocks: Block[]
+  documents: TripDocument[]
   tips: string[]
   start: string
   end: string
