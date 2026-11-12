@@ -48,8 +48,8 @@ export function App() {
     [setStoredTab],
   )
   const openPlace = useCallback((a: Activity, d: Day) => {
-    if (a.place) setGuide({ kind: 'place', place: a.place, date: d.date, note: a.note })
-    else if (a.search) setGuide({ kind: 'search', label: a.text, query: a.search, cityKey: (d.excursion ?? d.city).key, note: a.note })
+    if (a.place) setGuide({ kind: 'place', place: a.place, date: d.date, note: a.note, mapsUrl: a.mapsUrl })
+    else if (a.search) setGuide({ kind: 'search', label: a.text, query: a.search, cityKey: (d.excursion ?? d.city).key, note: a.note, mapsUrl: a.mapsUrl })
   }, [])
   const openCity = useCallback((key: string) => setGuide({ kind: 'city', key }), [])
   const closeGuide = useCallback(() => setGuide(null), [])

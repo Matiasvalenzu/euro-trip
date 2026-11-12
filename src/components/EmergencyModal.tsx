@@ -96,11 +96,24 @@ export function EmergencySheet({ open, onClose, trip, day }: { open: boolean; on
             <div className="min-w-0 flex-1">
               <Eyebrow>Dónde duermen esta noche</Eyebrow>
               <div className="mt-0.5 text-[15px] font-semibold">{stay.lodging?.name ?? `${stay.city.name} (sin reserva registrada)`}</div>
-              {stay.lodging?.url && (
-                <a href={stay.lodging.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[14px] font-semibold text-accent">
-                  Ver dirección en la reserva
-                </a>
-              )}
+              {stay.lodging?.address && <div className="mt-0.5 text-[13px] text-ink-2">{stay.lodging.address}</div>}
+              <div className="mt-1.5 flex flex-wrap gap-3">
+                {(stay.lodging?.mapsUrl ?? stay.mapsUrl) && (
+                  <a href={(stay.lodging?.mapsUrl ?? stay.mapsUrl)!} target="_blank" rel="noopener noreferrer" className="inline-block text-[14px] font-semibold text-accent">
+                    Abrir en Google Maps
+                  </a>
+                )}
+                {stay.lodging?.url && (
+                  <a href={stay.lodging.url} target="_blank" rel="noopener noreferrer" className="inline-block text-[14px] font-semibold text-accent">
+                    Ver reserva
+                  </a>
+                )}
+                {stay.lodging?.phone && (
+                  <a href={tel(stay.lodging.phone)} className="inline-block text-[14px] font-semibold text-accent tabular-nums">
+                    Llamar anfitrión ({stay.lodging.phone})
+                  </a>
+                )}
+              </div>
             </div>
           </Card>
         )}

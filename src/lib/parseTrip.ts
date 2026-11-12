@@ -1,10 +1,10 @@
-import type { Activity, Block, CityRef, Companion, Day, Leg, LegLine, Lodging, LodgingOption, Mode, Place, Stay, Trip } from '../types/travel'
-import { HOLIDAYS, cityRef, countryOf, findCity, getCity } from '../data/destinations'
+import type { Activity, Block, CityRef, Companion, Day, Leg, LegLine, Lodging, LodgingOption, MapPinLink, Mode, Place, Stay, Trip } from '../types/travel'
+import { HOLIDAYS, cityRef, countryOf, findCity, getCity, mapsUrl } from '../data/destinations'
 import { PLACES } from '../data/places'
 import { capitalize, cleanCell, isWordChar, maskParens, norm, sentences, splitOutside, stripParens, tidy } from './text'
 import { WEEKDAY_PLURAL, addDays, parseDayMonth, parseMinutes, toIso, weekdayOf } from './dates'
 
-type Col = 'dia' | 'fecha' | 'companion' | 'etapa' | 'actividad' | 'transporte' | 'duracion' | 'valor' | 'clima' | 'temperatura' | 'ropa' | 'detalle' | 'alojamiento'
+type Col = 'dia' | 'fecha' | 'companion' | 'etapa' | 'actividad' | 'transporte' | 'duracion' | 'valor' | 'clima' | 'temperatura' | 'ropa' | 'detalle' | 'alojamiento' | 'ubicaciones'
 
 // Encabezados de la planilla (normalizados) → columna. Se compara por prefijo.
 const HEADERS: [Col, string[]][] = [
@@ -12,18 +12,72 @@ const HEADERS: [Col, string[]][] = [
   ['actividad', ['actividad']], ['transporte', ['transporte']], ['duracion', ['duracion']],
   ['valor', ['valor', 'costo', 'precio']], ['clima', ['clima']], ['temperatura', ['temperatura']],
   ['ropa', ['vestimenta', 'ropa']], ['detalle', ['detalle']], ['alojamiento', ['alojamiento']],
+  ['ubicaciones', ['ubicaciones', 'mapa', 'googlemaps']],
 ]
 
 const headerKey = (h: string) => norm(h).replace(/[^a-z0-9]/g, '')
 
+// ---------- Ubicaciones (Google Maps) ----------
+
+export function parseLocations(cell: string): MapPinLink[] {
+  const list: MapPinLink[] = []
+  for (const raw of cell.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const m = line.match(/^(.+?):\s*(https?:\/\/\S+)\s*$/)
+    if (!m) continue
+    const rawLabel = m[1].trim()
+    const url = m[2].trim()
+    const isLodging = /\balojamiento\b|hotel|hostel|airbnb|poppies|cosy studio|casa de to[ñn]o/i.test(rawLabel)
+    const isTransport =
+      !isLodging &&
+      /\b(aeropuerto|estaci[oó]n|station|centraal|centralna|hauptbahnhof|hbf|keleti|nyugati|gare|sants|ferry|transvip|bus\s+\d+\w*|terminal)\b/i.test(rawLabel)
+    const parenMatch = rawLabel.match(/^([^(]+?)\s*\(([^)]+)\)\s*$/)
+    let label = rawLabel
+    let note: string | undefined
+    if (parenMatch) {
+      label = parenMatch[1].trim()
+      const cleanNote = parenMatch[2].replace(/^alojamiento\s*,?\s*/i, '').trim()
+      if (cleanNote) note = cleanNote
+    }
+    list.push({
+      label,
+      note,
+      url,
+      kind: isLodging ? 'lodging' : isTransport ? 'transport' : 'place',
+    })
+  }
+  return list
+}
+
+function matchActivityMapUrl(a: Activity, locations: MapPinLink[], cityName: string): string | undefined {
+  if (a.place) {
+    const targets = [norm(a.place.name), ...a.place.aliases]
+    const hit = locations.find((loc) => {
+      if (loc.kind === 'lodging') return false
+      const l = norm(loc.label)
+      return targets.some((t) => l === t || (l.length >= 4 && (l.includes(t) || t.includes(l))))
+    })
+    return hit?.url ?? mapsUrl(`${a.place.name} ${cityName}`)
+  }
+  const t = norm(stripParens(a.text))
+  const hit = locations.find((loc) => {
+    const l = norm(loc.label)
+    return l.length >= 4 && (t.includes(l) || (t.length >= 5 && l.includes(t)))
+  })
+  if (hit) return hit.url
+  if (a.kind === 'place') return mapsUrl(a.search ?? `${stripParens(a.text)} ${cityName}`)
+  return undefined
+}
+
 // ---------- Actividades ----------
 
 const STOP = new Set(
-  'a al con de del dia e el en hace la las los luego min o opcional para paseo por recorrido reserva reservar anticipacion si tarde manana noche temprano tren excursion iluminados iluminado iluminada atardecer castillo museo vistas y visita'.split(' '),
+  'a al barrio cafes caminata cerca compras con de del dia e el en excursion explorar hace hotel la las los luego min mirador molinos noche o opcional para paseo por recorrido reserva reservar semanas si suave tarde temprano tren iluminados iluminado iluminada atardecer castillo museo vistas y visita manana'.split(' '),
 )
 
-/** Etiquetas al inicio de una oración: "Mañana:", "Tarde en la…", "Opcional:", "Luego…". */
-const LEAD = /^(ma[ñn]ana|tarde|noche|luego|despu[eé]s|opcional|si queda tiempo|si hay tiempo|excursi[oó]n)\b\s*[:,]?\s*(?:en\s+(?:la|el|los|las)\s+)?/i
+/** Etiquetas al inicio de una oración: "Mañana:", "Tarde/noche opcional:", "Excursión de medio día desde Ámsterdam:". */
+const LEAD = /^(?:(ma[ñn]ana|tarde(?:\s*\/\s*noche)?|noche)(?:\s+opcional)?|(luego|despu[eé]s|opcional|si queda tiempo|si hay tiempo|excursi[oó]n(?:\s+de\s+(?:medio\s+)?d[ií]a)?(?:\s+desde\s+[^:,]+)?))\b\s*[:,]?\s*(?:en\s+(?:la|el|los|las)\s+)?/i
 /** Oraciones que son avisos y no actividades. */
 const NOTICE = /cerrad|\bcierra|verificar|por confirmar|\bsegun\b|estaria/
 const LOGISTICS = /^(vuelo|vuelta|tren|bus\b|metro|tranv|traslado|transfer|llegada|llegar|salir|salida|check|dormir|descans|d[ií]a\b|volver|regreso|temprano|desayuno|almuerzo|cena|compras|tiempo|libre)/i
@@ -103,9 +157,9 @@ export function extractActivities(text: string, cityKeys: string[], weekday: num
     let optional = false
     const lead = rest.match(LEAD)
     if (lead) {
-      const w = norm(lead[1])
-      when = w === 'manana' ? 'Mañana' : w === 'tarde' ? 'Tarde' : w === 'noche' ? 'Noche' : undefined
-      optional = /opcional|si queda|si hay/.test(w)
+      const w = norm(lead[1] ?? lead[2] ?? '')
+      when = w.startsWith('manana') ? 'Mañana' : w.startsWith('tarde') ? (w.includes('noche') ? 'Tarde/noche' : 'Tarde') : w.startsWith('noche') ? 'Noche' : undefined
+      optional = /opcional|si queda|si hay/.test(norm(lead[0]))
       rest = rest.slice(lead[0].length)
     }
     if (/^o\s/i.test(rest)) {
@@ -123,7 +177,7 @@ export function extractActivities(text: string, cityKeys: string[], weekday: num
 
     const hits = findHits(rest, candidates)
     const created: Activity[] = []
-    const items = splitOutside(rest, /[,;]|\s+(?:y|e)\s+/g, hits.map((h): [number, number] => [h.s, h.e]))
+    const items = splitOutside(rest, /[,;+]|\s+(?:y|e|o\s+bien)\s+/g, hits.map((h): [number, number] => [h.s, h.e]))
     for (const item of items) {
       const end = item.start + item.text.length
       const own = hits.filter((h) => h.s >= item.start && h.e <= end)
@@ -256,15 +310,21 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
   const main = altMatch ? detail.slice(0, altMatch.index) : detail
   const alt = altMatch ? detail.slice((altMatch.index ?? 0) + altMatch[0].length) : ''
 
-  const parts = main.split(/\s*\|\s*/).filter(Boolean)
+  const parts = main.split(/\n+|\s*\|\s*/).map((p) => p.trim()).filter(Boolean)
   const lines: LegLine[] = []
   for (const p of parts) {
     if (/^escala/i.test(p)) lines.push({ kind: 'layover', text: tidy(p) })
     else if (/^total/i.test(p)) lines.push({ kind: 'total', text: tidy(p) })
-    else splitSentences(p).forEach((s, i) => lines.push({ kind: i === 0 ? 'segment' : 'note', text: s }))
+    else if (/^trayecto\s+casa/i.test(p)) splitSentences(p).forEach((s) => lines.push({ kind: 'note', text: s }))
+    else {
+      const sents = splitSentences(p)
+      const arrowIdx = sents.findIndex((s) => /→/.test(s))
+      const segIdx = arrowIdx >= 0 ? arrowIdx : 0
+      sents.forEach((s, i) => lines.push({ kind: i === segIdx ? 'segment' : 'note', text: s }))
+    }
   }
 
-  // Horarios solo de los segmentos principales (no de notas como "el primero sale a las 04:14").
+  // Horarios solo de los segmentos principales (no de notas como "el primero sale a las 04:14" o el Transvip al aeropuerto).
   const segText = lines
     .filter((l) => l.kind === 'segment')
     .map((l) => l.text)
@@ -312,7 +372,7 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
     depart,
     arrive,
     nextDay: !!(depart && arrive && arrive < depart),
-    codes: [...new Set(main.match(/\b[A-Z]{2}\d{2,4}\b/g) ?? [])],
+    codes: [...new Set((segText || main).match(/\b[A-Z]{2}\d{2,4}\b/g) ?? [])],
     carrier: main.match(CARRIER_RE)?.[1],
     via,
     cost: costRaw ? tidy(costRaw.replace(/\([^)]*\)/, '')) : undefined,
@@ -328,7 +388,7 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
 
 const LODGING_STATUS = /^(reservad[oa]|reserva confirmada|confirmad[oa]|opci[oó]n posible|opci[oó]n|pendiente|pre-?reserva)\b/i
 
-function parseOptions(text: string): LodgingOption[] {
+function parseOptions(text: string, cityName = ''): LodgingOption[] {
   const opts: LodgingOption[] = []
   let group = ''
   for (const raw of text.split('\n')) {
@@ -344,7 +404,14 @@ function parseOptions(text: string): LodgingOption[] {
       const url = body.match(/https?:\/\/\S+/)?.[0]
       if (url) body = body.replace(url, '').replace(/\s*[—–-]\s*$/, '').trim()
       const [name, ...rest] = body.split(/\s+[—–]\s+/)
-      opts.push({ group, name: name.trim(), detail: rest.join(' · ').trim(), url })
+      const cleanName = name.trim()
+      opts.push({
+        group,
+        name: cleanName,
+        detail: rest.join(' · ').trim(),
+        url,
+        mapsUrl: mapsUrl(`${stripParens(cleanName)} ${cityName}`.trim()),
+      })
       continue
     }
     if (line.endsWith(':')) group = line.slice(0, -1).trim()
@@ -352,27 +419,62 @@ function parseOptions(text: string): LodgingOption[] {
   return opts
 }
 
-export function parseLodging(text: string): Lodging | undefined {
+export function parseLodging(text: string, cityName = ''): Lodging | undefined {
   const [first, ...others] = text.split(/\n\s*\n/)
   if (!LODGING_STATUS.test(first.trim())) return undefined
   const m = first.trim().match(/^([^(:]+?)\s*(?:\(([^)]*)\))?\s*:\s*([\s\S]*)$/)
   if (!m) return undefined
   const rest = m[3].replace(/https?:\/\/\S+/g, '').trim()
-  const [nameRaw, ...after] = rest.split(/\s+[—–]\s+/)
-  const body = after.join(' — ')
+
+  let nameRaw = ''
+  let address: string | undefined
+  let body = ''
+
+  if (/\s+[—–]\s+/.test(rest)) {
+    const [n, ...after] = rest.split(/\s+[—–]\s+/)
+    nameRaw = n
+    body = after.join(' — ')
+  } else {
+    const dotIdx = rest.indexOf('. ')
+    const firstSent = dotIdx >= 0 ? rest.slice(0, dotIdx) : rest
+    const afterDot = dotIdx >= 0 ? rest.slice(dotIdx + 2) : ''
+    const commaParts = splitOutside(firstSent, /,\s*/g, []).map((p) => p.text.trim()).filter(Boolean)
+    nameRaw = commaParts[0] ?? firstSent
+    const addrParts = commaParts.slice(1).filter((p) => !/\b(room|bed|suite|studio|habitaci[oó]n)\b/i.test(p))
+    if (addrParts.length > 0) address = addrParts.join(', ')
+    body = [commaParts.slice(1).join(', '), afterDot].filter(Boolean).join('. ')
+  }
+
+  const phone = rest.match(/(\+\d[\d\s-]{7,}\d)/)?.[1]?.trim()
+  const cleanName = tidy(
+    nameRaw.replace(/\(([^)]*)\)/g, (_, inner: string) => {
+      const parts = inner
+        .split(/,\s*/)
+        .filter((p) => !/^\+\d/.test(p.trim()))
+        .map((p) => p.trim())
+        .filter(Boolean)
+      return parts.length ? `(${parts.join(' · ')})` : ''
+    }),
+  )
+
   const status = capitalize(m[1].trim().toLowerCase())
+  const hours = body.match(/((?:check-?in|llegada)\s+desde\s+\d{1,2}:\d{2}(?:,\s*(?:check-?out|salida)\s+hasta\s+\d{1,2}:\d{2})?)/i)?.[1]?.trim()
+
   return {
     status,
     confirmed: /reservad|confirmad/i.test(status),
     meta: m[2],
-    name: tidy(nameRaw),
+    name: cleanName,
+    address,
+    hours,
+    phone,
     price: body.match(/total(?: final| pagado)?\s*(?:de\s*)?(\$?\s?[\d.,]+\s*(?:USD|EUR|CLP|PLN|HUF|€)?)/i)?.[1]?.trim(),
-    paid: /pagad/i.test(body),
-    code: body.match(/c[oó]digo(?: de reserva)?:?\s*([A-Z0-9]{5,})/i)?.[1],
-    refund: body.match(/((?:reembolso|cancelaci[oó]n)[^.\n]*)/i)?.[1],
-    breakfast: body.match(/(desayuno[^.\n]*)/i)?.[1],
+    paid: /pagad|tarifa no reembolsable|itinerario expedia/i.test(body),
+    code: body.match(/(?:c[oó]digo(?: de reserva)?|itinerario expedia):?\s*([A-Z0-9]{5,})/i)?.[1],
+    refund: body.match(/((?:reembolso|cancelaci[oó]n|tarifa no reembolsable)[^.\n]*)/i)?.[1]?.trim(),
+    breakfast: body.match(/(desayuno[^.,\n]*)/i)?.[1]?.trim(),
     url: first.match(/https?:\/\/\S+/)?.[0],
-    options: parseOptions(others.join('\n')),
+    options: parseOptions(others.join('\n'), cityName),
   }
 }
 
@@ -472,7 +574,12 @@ export function buildTrip(rows: string[][]): Trip {
     }
 
     const country = countryOf(excursion ?? city)
-    const plan = extractActivities(cells.actividad, cityKeys, weekday, (excursion ?? city).name)
+    const locations = parseLocations(cells.ubicaciones)
+    const activeCityName = (excursion ?? city).name
+    const plan = extractActivities(cells.actividad, cityKeys, weekday, activeCityName)
+    for (const a of plan.activities) {
+      a.mapsUrl = matchActivityMapUrl(a, locations, activeCityName)
+    }
     const alerts: string[] = [...plan.alerts]
     const holiday = HOLIDAYS.find((h) => h.md === date.slice(5) && h.country === country?.code)
     if (holiday) alerts.push(holiday.text)
@@ -492,6 +599,7 @@ export function buildTrip(rows: string[][]): Trip {
       sleep,
       summary: cells.actividad,
       activities: plan.activities,
+      locations,
       notes: plan.notes,
       localTransport: kind === 'stay' ? cleanCell(cells.transporte) || undefined : undefined,
       localCost: kind === 'stay' && !leg ? cleanCell(cells.valor) || undefined : undefined,
@@ -521,36 +629,69 @@ export function buildTrip(rows: string[][]): Trip {
   }
   const stayOf = (i: number) => stays.find((s) => s.dayIndexes.includes(i))
   for (const d of days) {
-    if (!d.lodgingNote) continue
     const own = stayOf(d.index)
     const prev = d.kind === 'transfer' ? stayOf(d.index - 1) : undefined
-    const parsed = parseLodging(d.lodgingNote)
-    if (parsed) {
-      if (own && !own.lodging) own.lodging = parsed
-      continue
-    }
-    // Texto libre: cada oración va a la estadía de la ciudad que menciona
-    // ("Checkout…" a la que se deja; "Alojamiento en Varsovia: …" a Varsovia).
-    for (const s of sentences(d.lodgingNote)) {
-      const key = findCity(s)
-      const target = key
-        ? ([own, prev].find((x) => x?.city.key === key) ?? own)
-        : /^(check-?out|misma reserva)/i.test(s)
-          ? (prev ?? own)
-          : own
-      if (!target) continue
-      if (target.lodging && norm(s).includes(norm(target.lodging.name))) continue
-      if (!target.lodging && !/^(check-?out|misma reserva)|por reservar|pendiente|sin reserva|no hay reserva|\bllega|opci[oó]n|cotiz/i.test(s)) {
-        const body = s.replace(/^alojamiento(?:\s+en\s+[^:]+)?:\s*/i, '').replace(/^en\s+/i, '')
-        const name = capitalize(tidy(body.replace(/\([^)]*\)/g, '')))
-        const extra = body.match(/\(([^)]*)\)/)?.[1]
-        if (name) {
-          target.lodging = { status: 'Confirmado', confirmed: true, name, price: extra ? capitalize(extra) : undefined, paid: false, options: [] }
-          continue
+
+    if (d.lodgingNote) {
+      const parsed = parseLodging(d.lodgingNote, own?.city.name)
+      if (parsed) {
+        if (own && !own.lodging) own.lodging = parsed
+      } else {
+        // Texto libre: cada oración va a la estadía de la ciudad que menciona
+        // ("Checkout…" a la que se deja; "Alojamiento en Varsovia: …" a Varsovia).
+        for (const s of sentences(d.lodgingNote)) {
+          if (/^misma (reserva|estad[ií]a)/i.test(s)) continue
+          const key = findCity(s)
+          const target = key
+            ? ([own, prev].find((x) => x?.city.key === key) ?? own)
+            : /^check-?out/i.test(s)
+              ? (prev ?? own)
+              : own
+          if (!target) continue
+          if (target.lodging && norm(s).includes(norm(target.lodging.name))) continue
+          if (!target.lodging && !/^(check-?out|misma (reserva|estad[ií]a))|por reservar|pendiente|sin reserva|no hay reserva|\bllega|opci[oó]n|cotiz/i.test(s)) {
+            const body = s.replace(/^alojamiento(?:\s+en\s+[^:]+)?:\s*/i, '').replace(/^en\s+/i, '')
+            const name = capitalize(tidy(body.replace(/\([^)]*\)/g, '')))
+            const extra = body.match(/\(([^)]*)\)/)?.[1]
+            if (name) {
+              target.lodging = { status: 'Confirmado', confirmed: true, name, price: extra ? capitalize(extra) : undefined, paid: false, options: [] }
+              continue
+            }
+          }
+          const cleanNote = s.replace(/\s*[—–-]\s*misma (reserva|estad[ií]a)[^.]*/i, '').trim()
+          if (cleanNote && !target.notes.includes(cleanNote)) target.notes.push(cleanNote)
         }
       }
-      target.notes.push(s)
     }
+
+    // Vincular ubicaciones de alojamiento de la columna Ubicaciones (Google Maps)
+    for (const loc of d.locations) {
+      if (loc.kind !== 'lodging') continue
+      const key = findCity(loc.label)
+      const target = key ? ([own, prev].find((x) => x?.city.key === key) ?? own) : own
+      if (!target) continue
+      const isGenericSearch = /^opciones de alojamiento/i.test(loc.label)
+      if (!isGenericSearch) {
+        target.mapsUrl ??= loc.url
+        if (target.lodging) {
+          target.lodging.mapsUrl ??= loc.url
+          if (!target.lodging.address && loc.note) target.lodging.address = loc.note
+          if (!target.lodging.address && /Mlynarska\+19/i.test(loc.url)) target.lodging.address = 'ul. Młynarska 19, Wola, Varsovia'
+        }
+      } else {
+        target.mapsUrl ??= loc.url
+      }
+    }
+  }
+
+  for (const s of stays) {
+    if (s.lodging) {
+      s.lodging.mapsUrl ??=
+        s.mapsUrl && !/Hoteles\+/i.test(s.mapsUrl)
+          ? s.mapsUrl
+          : mapsUrl(`${stripParens(s.lodging.name)} ${s.lodging.address ?? s.city.name}`.trim())
+    }
+    s.mapsUrl ??= s.lodging?.mapsUrl ?? mapsUrl(`Hoteles ${s.city.name} Centro`)
   }
 
   // Bloques del itinerario: días seguidos en la misma ciudad.

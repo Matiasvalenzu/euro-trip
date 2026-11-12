@@ -8,10 +8,10 @@ import { WEEKDAY_PLURAL, fmtShort, weekdayOf } from '../lib/dates'
 import { Button, Card, Chip, Eyebrow, LinkButton, Sheet } from './ui'
 
 export type GuideTarget =
-  | { kind: 'place'; place: Place; date?: string; note?: string }
+  | { kind: 'place'; place: Place; date?: string; note?: string; mapsUrl?: string }
   | { kind: 'city'; key: string }
   /** Lugar que no está en el catálogo: la guía se busca en Wikipedia. */
-  | { kind: 'search'; label: string; query: string; cityKey: string | null; note?: string }
+  | { kind: 'search'; label: string; query: string; cityKey: string | null; note?: string; mapsUrl?: string }
 
 export interface ReaderTarget {
   url: string
@@ -90,6 +90,7 @@ export function GuideSheet({ target, onClose, onRead }: { target: GuideTarget | 
   const date = target?.kind === 'place' ? target.date : undefined
   const closed = !!(place && date && place.closed?.includes(weekdayOf(date)))
   const where = city ? `${name}, ${city.name}` : name
+  const directMapsUrl = target && target.kind !== 'city' ? target.mapsUrl : undefined
 
   return (
     <Sheet open={!!target} onClose={onClose} label={name}>
@@ -157,7 +158,7 @@ export function GuideSheet({ target, onClose, onRead }: { target: GuideTarget | 
                   </LinkButton>
                 )}
                 <div className="grid grid-cols-2 gap-2">
-                  <LinkButton href={mapsUrl(where)} icon={<Navigation className="size-4" />}>
+                  <LinkButton href={directMapsUrl ?? mapsUrl(where)} icon={<Navigation className="size-4" />}>
                     Cómo llegar
                   </LinkButton>
                   {place?.url ? (
@@ -169,7 +170,7 @@ export function GuideSheet({ target, onClose, onRead }: { target: GuideTarget | 
                       Wikipedia
                     </LinkButton>
                   ) : (
-                    <LinkButton href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(where)}`} icon={<Globe className="size-4" />}>
+                    <LinkButton href={directMapsUrl ?? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(where)}`} icon={<Globe className="size-4" />}>
                       Reseñas
                     </LinkButton>
                   )}

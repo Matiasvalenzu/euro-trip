@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BedDouble, ChevronDown, Coffee, ExternalLink, Info, Receipt, RotateCcw, Search } from 'lucide-react'
+import { BedDouble, ChevronDown, Clock, Coffee, ExternalLink, Info, MapPin, Phone, Receipt, RotateCcw, Search } from 'lucide-react'
 import type { Stay, Trip } from '../../types/travel'
 import { countryOf } from '../../data/destinations'
 import { fmtShort } from '../../lib/dates'
@@ -42,6 +42,29 @@ function StayCard({ stay }: { stay: Stay }) {
         <>
           <div className="mt-4 text-[17px] font-semibold leading-snug">{l.name}</div>
           <div className="mt-1 divide-y divide-line">
+            {l.address && (
+              <Row icon={<MapPin className="size-4" />} label="Dirección">
+                <span className="flex items-center justify-between gap-2">
+                  <span>{l.address}</span>
+                  <CopyButton text={l.address} />
+                </span>
+              </Row>
+            )}
+            {l.hours && (
+              <Row icon={<Clock className="size-4" />} label="Horario">
+                {l.hours}
+              </Row>
+            )}
+            {l.phone && (
+              <Row icon={<Phone className="size-4" />} label="Contacto anfitrión">
+                <span className="flex items-center justify-between gap-2">
+                  <a href={`tel:${l.phone.replace(/[^0-9+]/g, '')}`} className="font-semibold text-accent tabular-nums">
+                    {l.phone}
+                  </a>
+                  <CopyButton text={l.phone} />
+                </span>
+              </Row>
+            )}
             {l.price && (
               <Row icon={<Receipt className="size-4" />} label="Total">
                 <span className="flex flex-wrap items-center gap-2">
@@ -68,17 +91,24 @@ function StayCard({ stay }: { stay: Stay }) {
                 {capitalize(l.breakfast.replace(/^desayuno\s*/i, ''))}
               </Row>
             )}
-            {stay.notes.filter((n) => !/^misma reserva/i.test(n)).map((n, i) => (
+            {stay.notes.filter((n) => !/^misma (reserva|estad[ií]a)/i.test(n)).map((n, i) => (
               <Row key={i} icon={<Info className="size-4" />} label="Nota">
                 {n}
               </Row>
             ))}
           </div>
-          {l.url && (
-            <LinkButton href={l.url} primary className="mt-3 w-full">
-              Abrir la reserva
-            </LinkButton>
-          )}
+          <div className={`mt-3 grid gap-2 ${l.url && (l.mapsUrl ?? stay.mapsUrl) ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {(l.mapsUrl ?? stay.mapsUrl) && (
+              <LinkButton href={(l.mapsUrl ?? stay.mapsUrl)!} primary={!l.url} icon={<MapPin className="size-4" />}>
+                Google Maps
+              </LinkButton>
+            )}
+            {l.url && (
+              <LinkButton href={l.url} primary>
+                Abrir reserva
+              </LinkButton>
+            )}
+          </div>
           {l.options.length > 0 && (
             <div className="mt-3">
               <button type="button" onClick={() => setShowOptions(!showOptions)} aria-expanded={showOptions} className="flex w-full items-center justify-between py-1 text-[14px] font-semibold text-accent">
@@ -91,11 +121,18 @@ function StayCard({ stay }: { stay: Stay }) {
                     <li key={i} className="rounded-xl bg-surface-2 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-[15px] font-semibold leading-snug">{o.name}</span>
-                        {o.url && (
-                          <a href={o.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${o.name}`} className="shrink-0 p-0.5 text-accent">
-                            <ExternalLink className="size-4" />
-                          </a>
-                        )}
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {o.mapsUrl && (
+                            <a href={o.mapsUrl} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${o.name} en Google Maps`} className="p-0.5 text-accent">
+                              <MapPin className="size-4" />
+                            </a>
+                          )}
+                          {o.url && (
+                            <a href={o.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${o.name}`} className="p-0.5 text-accent">
+                              <ExternalLink className="size-4" />
+                            </a>
+                          )}
+                        </span>
                       </div>
                       {o.detail && <p className="mt-1 text-[13px] leading-snug text-ink-2 break-words">{o.detail}</p>}
                     </li>
@@ -125,6 +162,11 @@ function StayCard({ stay }: { stay: Stay }) {
               Booking
             </LinkButton>
           </div>
+          {stay.mapsUrl && (
+            <LinkButton href={stay.mapsUrl} icon={<MapPin className="size-4" />} className="mt-2 w-full">
+              Ver zona en Google Maps
+            </LinkButton>
+          )}
         </>
       )}
     </Card>

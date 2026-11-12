@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   BedDouble, ChevronRight, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun,
-  Coins, Footprints, Info, KeyRound, MapPin, Moon, Plane, Shirt, Sun, TrainFront, TriangleAlert, Users,
+  Coins, ExternalLink, Footprints, Info, KeyRound, MapPin, Moon, Plane, Shirt, Sun, TrainFront, TriangleAlert, Users,
 } from 'lucide-react'
 import type { Activity, Day, Leg, TabType, Trip } from '../types/travel'
 import type { Forecast } from '../services/weather'
@@ -36,17 +36,28 @@ export function ActivityList({ day, onPlace }: { day: Day; onPlace: (a: Activity
             return (
               <li key={i} className="flex items-start gap-3 py-2.5">
                 <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-3">{PLAIN_ICON[a.kind]}</span>
-                <span className="min-w-0 pt-0.5 text-[14px] leading-snug text-ink-2 break-words">
+                <span className="min-w-0 flex-1 pt-0.5 text-[14px] leading-snug text-ink-2 break-words">
                   {a.when && <span className="mr-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-3">{a.when}</span>}
                   {a.text}
                 </span>
+                {a.mapsUrl && (
+                  <a
+                    href={a.mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Abrir ${a.text} en Google Maps`}
+                    className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-accent active:scale-95"
+                  >
+                    <MapPin className="size-4" />
+                  </a>
+                )}
               </li>
             )
           }
           num++
           return (
-            <li key={i}>
-              <button type="button" onClick={() => onPlace(a, day)} className="flex w-full items-start gap-3 py-2.5 text-left active:opacity-70">
+            <li key={i} className="flex items-start gap-2 py-2.5">
+              <button type="button" onClick={() => onPlace(a, day)} className="flex min-w-0 flex-1 items-start gap-3 text-left active:opacity-70">
                 <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[13px] font-bold text-accent">{num}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-semibold leading-snug">{a.text}</span>
@@ -68,6 +79,18 @@ export function ActivityList({ day, onPlace }: { day: Day; onPlace: (a: Activity
                 </span>
                 <ChevronRight className="mt-1 size-4 shrink-0 text-ink-3" />
               </button>
+              {a.mapsUrl && (
+                <a
+                  href={a.mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Abrir ${a.text} en Google Maps`}
+                  title="Ver en Google Maps"
+                  className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-accent active:scale-95"
+                >
+                  <MapPin className="size-4" />
+                </a>
+              )}
             </li>
           )
         })}
@@ -104,9 +127,41 @@ export function DayAlerts({ day }: { day: Day }) {
   )
 }
 
+export function DayLocations({ day }: { day: Day }) {
+  if (!day.locations.length) return null
+  return (
+    <div>
+      <div className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">Ubicaciones en Google Maps</div>
+      <div className="flex flex-wrap gap-1.5">
+        {day.locations.map((loc, i) => (
+          <a
+            key={i}
+            href={loc.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] font-medium text-ink active:scale-[0.98]"
+          >
+            {loc.kind === 'lodging' ? (
+              <BedDouble className="size-3.5 shrink-0 text-accent" />
+            ) : loc.kind === 'transport' ? (
+              <TrainFront className="size-3.5 shrink-0 text-accent" />
+            ) : (
+              <MapPin className="size-3.5 shrink-0 text-accent" />
+            )}
+            <span className="truncate">{loc.label}</span>
+            {loc.note && <span className="truncate text-[12px] text-ink-3">· {loc.note}</span>}
+            <ExternalLink className="size-3 shrink-0 text-ink-3" />
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function DayInfo({ day, trip, forecast, onTab }: { day: Day; trip: Trip; forecast: Forecast; onTab: (t: TabType) => void }) {
   const wx = forecastFor(day, forecast)
   const stay = trip.stays.find((s) => s.dayIndexes.includes(day.index))
+  const stayMapsUrl = stay?.lodging?.mapsUrl ?? stay?.mapsUrl
   return (
     <div className="divide-y divide-line rounded-xl border border-line px-3">
       {(day.weather || day.temp || wx) && (
@@ -139,23 +194,40 @@ export function DayInfo({ day, trip, forecast, onTab }: { day: Day; trip: Trip; 
           {day.localCost}
         </Row>
       )}
-      <button type="button" onClick={() => onTab('estadias')} className="block w-full text-left">
-        <Row icon={<BedDouble className="size-4" />} label="Dónde duermen">
-          {!day.sleep ? (
-            'En el avión (noche en tránsito)'
-          ) : stay?.lodging ? (
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span>{stay.lodging.name}</span>
-              <Chip tone={stay.lodging.confirmed ? 'ok' : 'warn'}>{stay.lodging.confirmed && stay.lodging.status !== 'Confirmado' ? 'Reservado' : stay.lodging.status}</Chip>
-            </span>
-          ) : (
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span>{day.sleep.name}</span>
-              <Chip tone="danger">Sin reserva</Chip>
-            </span>
-          )}
-        </Row>
-      </button>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => onTab('estadias')} className="min-w-0 flex-1 text-left">
+          <Row icon={<BedDouble className="size-4" />} label="Dónde duermen">
+            {!day.sleep ? (
+              'En el avión (noche en tránsito)'
+            ) : stay?.lodging ? (
+              <span className="block">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>{stay.lodging.name}</span>
+                  <Chip tone={stay.lodging.confirmed ? 'ok' : 'warn'}>{stay.lodging.confirmed && stay.lodging.status !== 'Confirmado' ? 'Reservado' : stay.lodging.status}</Chip>
+                </span>
+                {stay.lodging.address && <span className="mt-0.5 block text-[13px] text-ink-2">{stay.lodging.address}</span>}
+              </span>
+            ) : (
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>{day.sleep.name}</span>
+                <Chip tone="danger">Sin reserva</Chip>
+              </span>
+            )}
+          </Row>
+        </button>
+        {day.sleep && stayMapsUrl && (
+          <a
+            href={stayMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Ver alojamiento en ${day.sleep.name} en Google Maps`}
+            title="Ver alojamiento en Google Maps"
+            className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-accent active:scale-95"
+          >
+            <MapPin className="size-4" />
+          </a>
+        )}
+      </div>
       {day.companion && (
         <Row icon={<Users className="size-4" />} label={`Dónde está ${day.companion.label}`}>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -180,6 +252,7 @@ export function DayBody({ day, trip, forecast, onPlace, onLeg, onTab }: {
     <div className="space-y-4">
       {day.leg && <LegCard leg={day.leg} onOpen={() => onLeg(day.leg!)} />}
       <ActivityList day={day} onPlace={onPlace} />
+      <DayLocations day={day} />
       <DayAlerts day={day} />
       <DayNotes day={day} />
       <DayInfo day={day} trip={trip} forecast={forecast} onTab={onTab} />

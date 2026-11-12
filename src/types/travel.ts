@@ -24,6 +24,13 @@ export interface Place {
   closed?: number[]
 }
 
+export interface MapPinLink {
+  label: string
+  note?: string
+  url: string
+  kind: 'lodging' | 'transport' | 'place'
+}
+
 export interface Activity {
   kind: 'place' | 'flight' | 'train' | 'arrive' | 'rest' | 'other'
   text: string
@@ -39,6 +46,8 @@ export interface Activity {
   /** Uno u otro ("Rijksmuseum o Museo Van Gogh"). */
   choice?: boolean
   closedToday?: string
+  /** Enlace directo a Google Maps desde la planilla o generado para el lugar. */
+  mapsUrl?: string
 }
 
 export interface LegLine {
@@ -77,6 +86,7 @@ export interface LodgingOption {
   name: string
   detail: string
   url?: string
+  mapsUrl?: string
 }
 
 export interface Lodging {
@@ -84,12 +94,16 @@ export interface Lodging {
   confirmed: boolean
   meta?: string
   name: string
+  address?: string
+  hours?: string
+  phone?: string
   price?: string
   paid: boolean
   code?: string
   refund?: string
   breakfast?: string
   url?: string
+  mapsUrl?: string
   options: LodgingOption[]
 }
 
@@ -115,6 +129,7 @@ export interface Day {
   sleep: CityRef | null
   summary: string
   activities: Activity[]
+  locations: MapPinLink[]
   localTransport?: string
   localCost?: string
   leg?: Leg
@@ -136,6 +151,7 @@ export interface Stay {
   nights: number
   dayIndexes: number[]
   lodging?: Lodging
+  mapsUrl?: string
   notes: string[]
 }
 
