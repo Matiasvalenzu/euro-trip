@@ -1,3 +1,5 @@
+import { extractUrlMatches } from './links'
+
 /** Minúsculas y sin tildes, conservando la longitud (cada índice coincide con el texto original). */
 export function norm(s: string): string {
   let out = ''
@@ -46,11 +48,14 @@ export function splitOutside(s: string, re: RegExp, keep: [number, number][] = [
   return out.filter((p) => p.text.trim())
 }
 
-/** Oraciones de un texto, sin cortar dentro de paréntesis, en dominios ni en abreviaturas ("hl.st."). */
-export const sentences = (s: string) =>
-  splitOutside(s.replace(/\s*\n+\s*/g, ' '), /[.!?](?=\s+[\p{Lu}¿¡]|\s*$)/gu)
+/** Oraciones de un texto, sin cortar dentro de paréntesis, URLs, dominios ni abreviaturas ("hl.st."). */
+export function sentences(s: string): string[] {
+  const collapsed = s.replace(/\s*\n+\s*/g, ' ')
+  const keep = extractUrlMatches(collapsed).map((m): [number, number] => [m.start, m.end])
+  return splitOutside(collapsed, /[.!?](?=\s+[\p{Lu}¿¡]|\s*$)/gu, keep)
     .map((p) => tidy(p.text))
     .filter(Boolean)
+}
 
 /** Rango corto de temperatura: "Máx. ~3 a 5 °C, mín. ~-1 a 0 °C (…)" → "-1 a 5 °C". */
 export function shortTemp(t?: string): string | undefined {
@@ -82,14 +87,26 @@ export function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
-/** Quita espacios dobles y signos sueltos al inicio o al final. */
+/** Quita espacios dobles y signos sueltos al inicio o al final, sin alterar URLs. */
 export function tidy(s: string): string {
-  return s
+  const urls = extractUrlMatches(s)
+  let work = s
+  if (urls.length) {
+    work = ''
+    let pos = 0
+    urls.forEach((m, i) => {
+      work += s.slice(pos, m.start) + `\uE000${i}\uE000`
+      pos = m.end
+    })
+    work += s.slice(pos)
+  }
+  const cleaned = work
     .replace(/\(\s*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/^[\s:;,.\-–—]+|[\s:;,\-–—]+$/g, '')
     .replace(/\.$/, '')
     .trim()
+  return urls.length ? cleaned.replace(/\uE000(\d+)\uE000/g, (_, idx: string) => urls[+idx].url) : cleaned
 }
 
 /** "2 a 8°C" → "2 a 8 °C" */

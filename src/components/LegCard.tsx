@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Clock, Info, Ticket } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, ExternalLink, Info, Ticket } from 'lucide-react'
 import type { Leg } from '../types/travel'
 import { fmtShort } from '../lib/dates'
-import { Card, Chip, LinkButton, ModeBadge, ModeIcon } from './ui'
+import { isTicketUrl } from '../lib/links'
+import { Card, Chip, LinkButton, LinkedText, ModeBadge, ModeIcon } from './ui'
 
 const modeName = (leg: Leg) => (leg.mode === 'avion' ? 'Vuelo' : leg.mode === 'bus' ? 'Bus' : 'Tren')
 
@@ -66,15 +67,41 @@ export function LegRoute({ leg }: { leg: Leg }) {
 }
 
 function LegDetails({ leg }: { leg: Leg }) {
+  const ticketLinks = leg.lines.filter((l) => l.kind === 'link' && l.url)
   return (
     <div className="mt-3 space-y-3 border-t border-line pt-3">
       <ul className="space-y-2">
         {leg.lines.map((l, i) => (
           <li key={i} className="flex gap-2.5 text-[14px] leading-snug">
             <span className="mt-0.5 shrink-0 text-ink-3">
-              {l.kind === 'layover' ? <Clock className="size-4" /> : l.kind === 'segment' ? <ModeIcon mode={leg.mode} className="size-4" /> : <Info className="size-4" />}
+              {l.kind === 'layover' ? (
+                <Clock className="size-4" />
+              ) : l.kind === 'segment' ? (
+                <ModeIcon mode={leg.mode} className="size-4" />
+              ) : l.kind === 'link' && l.url ? (
+                isTicketUrl(l.text, l.url) ? (
+                  <Ticket className="size-4 text-accent" />
+                ) : (
+                  <ExternalLink className="size-4 text-accent" />
+                )
+              ) : (
+                <Info className="size-4" />
+              )}
             </span>
-            <span className={`min-w-0 break-words ${l.kind === 'segment' ? 'text-ink' : 'text-ink-2'}`}>{l.text}</span>
+            {l.kind === 'link' && l.url ? (
+              <a
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`min-w-0 font-medium text-accent underline decoration-accent/40 underline-offset-2 ${l.text === l.url ? 'break-all' : 'break-words'}`}
+              >
+                {l.text}
+              </a>
+            ) : (
+              <span className={`min-w-0 break-words ${l.kind === 'segment' ? 'text-ink' : 'text-ink-2'}`}>
+                <LinkedText text={l.text} />
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -84,13 +111,18 @@ function LegDetails({ leg }: { leg: Leg }) {
           <ul className="mt-1.5 space-y-1">
             {leg.alternatives.map((a, i) => (
               <li key={i} className="text-[14px] leading-snug text-ink-2 break-words">
-                {a}
+                <LinkedText text={a} />
               </li>
             ))}
           </ul>
         </div>
       )}
-      {(leg.status === 'Cotizado' || leg.status === 'Estimado') && (
+      {ticketLinks.map((l, i) => (
+        <LinkButton key={i} href={l.url!} primary icon={<Ticket className="size-4" />} className="w-full">
+          {l.text !== l.url ? l.text : /nsinternational/i.test(l.url!) ? 'Abrir tickets en app NS International' : 'Abrir tickets / reserva'}
+        </LinkButton>
+      ))}
+      {ticketLinks.length === 0 && (leg.status === 'Cotizado' || leg.status === 'Estimado') && (
         <LinkButton href={buyUrl(leg)} icon={<Ticket className="size-4" />} className="w-full">
           Buscar y comprar pasajes
         </LinkButton>
@@ -137,7 +169,11 @@ export function LegCard({ leg, onOpen, defaultOpen = false }: { leg: Leg; onOpen
           <span className="text-[13px] text-ink-2">Costo</span>
           <span className="min-w-0 text-right">
             <span className="text-[14px] font-semibold">{leg.cost}</span>
-            {leg.costNote && <span className="block text-[12px] leading-snug text-ink-3">{leg.costNote}</span>}
+            {leg.costNote && (
+              <span className="block text-[12px] leading-snug text-ink-3">
+                <LinkedText text={leg.costNote} />
+              </span>
+            )}
           </span>
         </div>
       )}

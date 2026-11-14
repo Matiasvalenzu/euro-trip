@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
 import {
   BedDouble, ChevronRight, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun,
-  Coins, ExternalLink, Footprints, Info, KeyRound, MapPin, Moon, Plane, Shirt, Sun, TrainFront, TriangleAlert, Users,
+  Coins, ExternalLink, Footprints, Info, KeyRound, Link2, MapPin, Moon, Plane, Shirt, Sun, Ticket, TrainFront, TriangleAlert, Users,
 } from 'lucide-react'
-import type { Activity, Day, Leg, TabType, Trip } from '../types/travel'
+import type { Activity, Day, Leg, MapPinLink, TabType, Trip } from '../types/travel'
 import type { Forecast } from '../services/weather'
 import { forecastFor, wxLabel } from '../services/weather'
+import { hasUrl, isMapsUrl } from '../lib/links'
 import { fmtTemp, shortTemp } from '../lib/text'
 import { LegCard } from './LegCard'
-import { Chip, Row } from './ui'
+import { Chip, LinkedText, Row } from './ui'
 
 export function WxIcon({ code, className = 'size-4' }: { code: number; className?: string }) {
   const Icon =
@@ -38,7 +39,7 @@ export function ActivityList({ day, onPlace }: { day: Day; onPlace: (a: Activity
                 <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-3">{PLAIN_ICON[a.kind]}</span>
                 <span className="min-w-0 flex-1 pt-0.5 text-[14px] leading-snug text-ink-2 break-words">
                   {a.when && <span className="mr-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-3">{a.when}</span>}
-                  {a.text}
+                  <LinkedText text={a.text} />
                 </span>
                 {a.mapsUrl && (
                   <a
@@ -55,30 +56,51 @@ export function ActivityList({ day, onPlace }: { day: Day; onPlace: (a: Activity
             )
           }
           num++
+          const noteHasUrl = hasUrl(a.note)
+          const body = (
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-semibold leading-snug">{a.text}</span>
+              {a.note && !noteHasUrl && <span className="mt-0.5 block text-[13px] leading-snug text-ink break-words">{a.note}</span>}
+              {a.place ? (
+                <span className="mt-0.5 block text-[13px] leading-snug text-ink-3">{a.place.blurb}</span>
+              ) : (
+                <span className="mt-0.5 block text-[13px] font-medium text-accent">Ver guía del lugar</span>
+              )}
+              {(a.when || a.book || a.closedToday || a.optional || a.choice) && (
+                <span className="mt-1.5 flex flex-wrap gap-1.5">
+                  {a.when && <Chip>{a.when}</Chip>}
+                  {a.closedToday && <Chip tone="danger">{a.closedToday}</Chip>}
+                  {a.book && <Chip tone="warn">Reservar entrada</Chip>}
+                  {a.optional && <Chip>Opcional</Chip>}
+                  {a.choice && <Chip>Una u otra</Chip>}
+                </span>
+              )}
+            </span>
+          )
           return (
             <li key={i} className="flex items-start gap-2 py-2.5">
-              <button type="button" onClick={() => onPlace(a, day)} className="flex min-w-0 flex-1 items-start gap-3 text-left active:opacity-70">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[13px] font-bold text-accent">{num}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold leading-snug">{a.text}</span>
-                  {a.note && <span className="mt-0.5 block text-[13px] leading-snug text-ink break-words">{a.note}</span>}
-                  {a.place ? (
-                    <span className="mt-0.5 block text-[13px] leading-snug text-ink-3">{a.place.blurb}</span>
-                  ) : (
-                    <span className="mt-0.5 block text-[13px] font-medium text-accent">Ver guía del lugar</span>
-                  )}
-                  {(a.when || a.book || a.closedToday || a.optional || a.choice) && (
-                    <span className="mt-1.5 flex flex-wrap gap-1.5">
-                      {a.when && <Chip>{a.when}</Chip>}
-                      {a.closedToday && <Chip tone="danger">{a.closedToday}</Chip>}
-                      {a.book && <Chip tone="warn">Reservar entrada</Chip>}
-                      {a.optional && <Chip>Opcional</Chip>}
-                      {a.choice && <Chip>Una u otra</Chip>}
-                    </span>
-                  )}
-                </span>
-                <ChevronRight className="mt-1 size-4 shrink-0 text-ink-3" />
-              </button>
+              {noteHasUrl ? (
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[13px] font-bold text-accent">{num}</span>
+                  <div className="min-w-0 flex-1">
+                    <button type="button" onClick={() => onPlace(a, day)} className="flex w-full items-start gap-2 text-left active:opacity-70">
+                      {body}
+                      <ChevronRight className="mt-1 size-4 shrink-0 text-ink-3" />
+                    </button>
+                    {a.note && (
+                      <div className="mt-1 text-[13px] leading-snug text-ink break-words">
+                        <LinkedText text={a.note} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => onPlace(a, day)} className="flex min-w-0 flex-1 items-start gap-3 text-left active:opacity-70">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[13px] font-bold text-accent">{num}</span>
+                  {body}
+                  <ChevronRight className="mt-1 size-4 shrink-0 text-ink-3" />
+                </button>
+              )}
               {a.mapsUrl && (
                 <a
                   href={a.mapsUrl}
@@ -106,7 +128,9 @@ export function DayNotes({ day }: { day: Day }) {
       {day.notes.map((t, i) => (
         <div key={i} className="flex gap-2.5 rounded-xl bg-surface-2 px-3 py-2.5 text-[14px] leading-snug text-ink">
           <Info className="mt-0.5 size-4 shrink-0 text-ink-3" />
-          <span className="min-w-0 break-words">{t}</span>
+          <span className="min-w-0 break-words">
+            <LinkedText text={t} />
+          </span>
         </div>
       ))}
     </div>
@@ -120,40 +144,57 @@ export function DayAlerts({ day }: { day: Day }) {
       {day.alerts.map((t, i) => (
         <div key={i} className="flex gap-2.5 rounded-xl bg-warn-soft px-3 py-2.5 text-[14px] leading-snug text-ink">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" />
-          <span className="min-w-0 break-words">{t}</span>
+          <span className="min-w-0 break-words">
+            <LinkedText text={t} />
+          </span>
         </div>
       ))}
     </div>
   )
 }
 
-export function DayLocations({ day }: { day: Day }) {
-  if (!day.locations.length) return null
+function LocationIcon({ kind }: { kind: MapPinLink['kind'] }) {
+  if (kind === 'ticket') return <Ticket className="size-3.5 shrink-0 text-accent" />
+  if (kind === 'link') return <Link2 className="size-3.5 shrink-0 text-accent" />
+  if (kind === 'lodging') return <BedDouble className="size-3.5 shrink-0 text-accent" />
+  if (kind === 'transport') return <TrainFront className="size-3.5 shrink-0 text-accent" />
+  return <MapPin className="size-3.5 shrink-0 text-accent" />
+}
+
+function LocationGroup({ title, items }: { title: string; items: MapPinLink[] }) {
+  if (!items.length) return null
   return (
     <div>
-      <div className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">Ubicaciones en Google Maps</div>
+      <div className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">{title}</div>
       <div className="flex flex-wrap gap-1.5">
-        {day.locations.map((loc, i) => (
+        {items.map((loc, i) => (
           <a
             key={i}
             href={loc.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-2.5 py-1.5 text-[13px] font-medium text-ink active:scale-[0.98]"
+            className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-2.5 py-1.5 text-left text-[13px] font-medium leading-snug text-ink active:scale-[0.98]"
           >
-            {loc.kind === 'lodging' ? (
-              <BedDouble className="size-3.5 shrink-0 text-accent" />
-            ) : loc.kind === 'transport' ? (
-              <TrainFront className="size-3.5 shrink-0 text-accent" />
-            ) : (
-              <MapPin className="size-3.5 shrink-0 text-accent" />
-            )}
-            <span className="truncate">{loc.label}</span>
-            {loc.note && <span className="truncate text-[12px] text-ink-3">· {loc.note}</span>}
+            <LocationIcon kind={loc.kind} />
+            <span className={`min-w-0 ${/^https?:\/\//i.test(loc.label) ? 'break-all' : 'break-words'}`}>{loc.label}</span>
+            {loc.note && <span className="min-w-0 break-words text-[12px] text-ink-3">· {loc.note}</span>}
             <ExternalLink className="size-3 shrink-0 text-ink-3" />
           </a>
         ))}
       </div>
+    </div>
+  )
+}
+
+export function DayLocations({ day }: { day: Day }) {
+  if (!day.locations.length) return null
+  const links = day.locations.filter((loc) => loc.kind === 'ticket' || loc.kind === 'link' || !isMapsUrl(loc.url))
+  const maps = day.locations.filter((loc) => isMapsUrl(loc.url) && loc.kind !== 'ticket' && loc.kind !== 'link')
+  const linkTitle = links.some((l) => l.kind === 'ticket') ? 'Tickets y enlaces' : 'Enlaces'
+  return (
+    <div className="space-y-3">
+      <LocationGroup title={linkTitle} items={links} />
+      <LocationGroup title="Ubicaciones en Google Maps" items={maps} />
     </div>
   )
 }
@@ -175,23 +216,31 @@ export function DayInfo({ day, trip, forecast, onTab }: { day: Day; trip: Trip; 
           ) : (
             shortTemp(day.temp) && <span className="block font-semibold">{shortTemp(day.temp)}</span>
           )}
-          {day.weather && <span className="mt-0.5 block text-[13px] text-ink-2">{day.weather}</span>}
-          {day.temp && (wx || fmtTemp(day.temp) !== shortTemp(day.temp)) && <span className="mt-0.5 block text-[13px] text-ink-3">{fmtTemp(day.temp)}</span>}
+          {day.weather && (
+            <span className="mt-0.5 block text-[13px] text-ink-2">
+              <LinkedText text={day.weather} />
+            </span>
+          )}
+          {day.temp && (wx || fmtTemp(day.temp) !== shortTemp(day.temp)) && (
+            <span className="mt-0.5 block text-[13px] text-ink-3">
+              <LinkedText text={fmtTemp(day.temp) ?? day.temp} />
+            </span>
+          )}
         </Row>
       )}
       {day.clothing && (
         <Row icon={<Shirt className="size-4" />} label="Qué ponerse">
-          {day.clothing}
+          <LinkedText text={day.clothing} />
         </Row>
       )}
       {day.localTransport && (
         <Row icon={<MapPin className="size-4" />} label="Para moverse">
-          {day.localTransport}
+          <LinkedText text={day.localTransport} />
         </Row>
       )}
       {day.localCost && (
         <Row icon={<Coins className="size-4" />} label="Gasto estimado">
-          {day.localCost}
+          <LinkedText text={day.localCost} />
         </Row>
       )}
       <div className="flex items-center gap-2">
@@ -231,7 +280,9 @@ export function DayInfo({ day, trip, forecast, onTab }: { day: Day; trip: Trip; 
       {day.companion && (
         <Row icon={<Users className="size-4" />} label={`Dónde está ${day.companion.label}`}>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{day.companion.text}</span>
+            <span>
+              <LinkedText text={day.companion.text} />
+            </span>
             {day.companion.together && <Chip tone="accent">¡Coinciden!</Chip>}
           </span>
         </Row>

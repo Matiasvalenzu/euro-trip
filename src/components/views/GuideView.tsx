@@ -8,7 +8,7 @@ import { PLUG_NOTE, getCity, getCountry, type CountryCode } from '../../data/des
 import { currencyLabel } from '../../lib/money'
 import { LINK_GROUPS, TRAVEL_INSURANCE, insuranceInfo, tipMeta } from '../../data/resources'
 import { Checklist } from '../Checklist'
-import { Button, Card, CopyButton, PageTitle, Row, SectionTitle } from '../ui'
+import { Button, Card, CopyButton, LinkedText, PageTitle, Row, SectionTitle } from '../ui'
 
 const TIP_ICONS: Record<ReturnType<typeof tipMeta>['icon'], ReactNode> = {
   doc: <FileText className="size-4" />,
@@ -90,7 +90,7 @@ export function GuideView({ trip, sheetLink, onCity, onOpenInsurance }: { trip: 
               const meta = tipMeta(t)
               return (
                 <Row key={i} icon={TIP_ICONS[meta.icon]} label={meta.title}>
-                  {t}
+                  <LinkedText text={t} />
                 </Row>
               )
             })}

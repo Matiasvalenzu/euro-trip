@@ -28,7 +28,7 @@ export interface MapPinLink {
   label: string
   note?: string
   url: string
-  kind: 'lodging' | 'transport' | 'place'
+  kind: 'lodging' | 'transport' | 'place' | 'ticket' | 'link'
 }
 
 export interface Activity {
@@ -51,8 +51,9 @@ export interface Activity {
 }
 
 export interface LegLine {
-  kind: 'segment' | 'layover' | 'total' | 'note'
+  kind: 'segment' | 'layover' | 'total' | 'note' | 'link'
   text: string
+  url?: string
 }
 
 export interface Leg {

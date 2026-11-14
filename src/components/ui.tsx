@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Bus, Check, Copy, ExternalLink, Plane, Ship, TrainFront, X } from 'lucide-react'
 import type { Mode } from '../types/travel'
+import { parseTextWithLinks } from '../lib/links'
 
 export function Card({ className = '', children }: { className?: string; children: ReactNode }) {
   return <div className={`rounded-2xl border border-line bg-surface ${className}`}>{children}</div>
@@ -90,6 +91,36 @@ export function LinkButton({ href, children, icon, primary = false, className = 
       <span className="min-w-0 truncate">{children}</span>
       <ExternalLink className="size-3.5 shrink-0 opacity-60" aria-hidden />
     </a>
+  )
+}
+
+/** Renderiza texto de la planilla convirtiendo cada URL (o etiqueta en la línea previa) en un enlace externo al SO. */
+export function LinkedText({ text }: { text: string }) {
+  const lines = parseTextWithLinks(text)
+  if (!lines.length) return null
+  return (
+    <>
+      {lines.map((segments, li) => (
+        <Fragment key={li}>
+          {li > 0 && <br />}
+          {segments.map((seg, si) =>
+            seg.type === 'link' ? (
+              <a
+                key={si}
+                href={seg.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`font-medium text-accent underline decoration-accent/40 underline-offset-2 ${seg.label === seg.url ? 'break-all' : 'break-words'}`}
+              >
+                {seg.label}
+              </a>
+            ) : (
+              <Fragment key={si}>{seg.text}</Fragment>
+            ),
+          )}
+        </Fragment>
+      ))}
+    </>
   )
 }
 

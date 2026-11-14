@@ -5,7 +5,7 @@ import { getCity, getCountry, mapsUrl, voyageUrl, wikiUrl } from '../data/destin
 import { cachedSearch, cachedSummary, getSummary, searchTitle, type WikiSummary } from '../services/wiki'
 import { currencyLabel } from '../lib/money'
 import { WEEKDAY_PLURAL, fmtShort, weekdayOf } from '../lib/dates'
-import { Button, Card, Chip, Eyebrow, LinkButton, Sheet } from './ui'
+import { Button, Card, Chip, Eyebrow, LinkButton, LinkedText, Sheet } from './ui'
 
 export type GuideTarget =
   | { kind: 'place'; place: Place; date?: string; note?: string; mapsUrl?: string }
@@ -122,7 +122,7 @@ export function GuideSheet({ target, onClose, onRead }: { target: GuideTarget | 
             <div className="mt-3 flex gap-2.5 rounded-xl bg-accent-soft px-3 py-2.5 text-[14px] leading-snug">
               <Info className="mt-0.5 size-4 shrink-0 text-accent" />
               <span className="min-w-0 break-words">
-                <b className="font-semibold">En la planilla:</b> {note}
+                <b className="font-semibold">En la planilla:</b> <LinkedText text={note} />
               </span>
             </div>
           )}

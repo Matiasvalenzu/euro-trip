@@ -2,6 +2,7 @@ import type { Activity, Block, CityRef, Companion, Day, Leg, LegLine, Lodging, L
 import { HOLIDAYS, cityRef, countryOf, findCity, getCity, mapsUrl } from '../data/destinations'
 import { PLACES } from '../data/places'
 import { capitalize, cleanCell, isWordChar, maskParens, norm, sentences, splitOutside, stripParens, tidy } from './text'
+import { asPureUrl, extractUrlMatches, isLabelLine, isMapsUrl, isTicketUrl } from './links'
 import { WEEKDAY_PLURAL, addDays, parseDayMonth, parseMinutes, toIso, weekdayOf } from './dates'
 
 type Col = 'dia' | 'fecha' | 'companion' | 'etapa' | 'actividad' | 'transporte' | 'duracion' | 'valor' | 'clima' | 'temperatura' | 'ropa' | 'detalle' | 'alojamiento' | 'ubicaciones' | 'documentos'
@@ -18,51 +19,86 @@ const HEADERS: [Col, string[]][] = [
 
 const headerKey = (h: string) => norm(h).replace(/[^a-z0-9]/g, '')
 
-// ---------- Ubicaciones (Google Maps) ----------
+// ---------- Ubicaciones y enlaces (Columna N) ----------
 
-export function parseLocations(cell: string): MapPinLink[] {
-  const list: MapPinLink[] = []
-  for (const raw of cell.split('\n')) {
-    const line = raw.trim()
-    if (!line) continue
-    const m = line.match(/^(.+?):\s*(https?:\/\/\S+)\s*$/)
-    if (!m) continue
-    const rawLabel = m[1].trim()
-    const url = m[2].trim()
-    const isLodging = /\balojamiento\b|hotel|hostel|airbnb|poppies|cosy studio|casa de to[ñn]o/i.test(rawLabel)
-    const isTransport =
-      !isLodging &&
-      /\b(aeropuerto|estaci[oó]n|station|centraal|centralna|hauptbahnhof|hbf|keleti|nyugati|gare|sants|ferry|transvip|bus\s+\d+\w*|terminal)\b/i.test(rawLabel)
-    const parenMatch = rawLabel.match(/^([^(]+?)\s*\(([^)]+)\)\s*$/)
-    let label = rawLabel
-    let note: string | undefined
+function makePinLink(rawLabel: string, url: string): MapPinLink {
+  const cleanLabel = rawLabel.replace(/[:\-–—\s]+$/, '').trim() || url
+  const isLodging =
+    /\balojamiento\b|hotel|hostel|airbnb|poppies|cosy studio|casa de to[ñn]o/i.test(cleanLabel) ||
+    /airbnb\.|booking\.com|expedia\./i.test(url)
+  const isTicket = !isLodging && isTicketUrl(cleanLabel, url)
+  const isTransport =
+    !isLodging &&
+    !isTicket &&
+    /\b(aeropuerto|estaci[oó]n|station|centraal|centralna|hauptbahnhof|hbf|keleti|nyugati|gare|sants|ferry|transvip|bus\s+\d+\w*|terminal)\b/i.test(cleanLabel)
+  const kind: MapPinLink['kind'] = isLodging
+    ? 'lodging'
+    : isTicket
+      ? 'ticket'
+      : isTransport
+        ? 'transport'
+        : isMapsUrl(url)
+          ? 'place'
+          : 'link'
+
+  let label = cleanLabel
+  let note: string | undefined
+  if (kind === 'lodging' || kind === 'transport' || kind === 'place') {
+    const parenMatch = cleanLabel.match(/^([^(]+?)\s*\(([^)]+)\)\s*$/)
     if (parenMatch) {
       label = parenMatch[1].trim()
       const cleanNote = parenMatch[2].replace(/^alojamiento\s*,?\s*/i, '').trim()
       if (cleanNote) note = cleanNote
     }
-    list.push({
-      label,
-      note,
-      url,
-      kind: isLodging ? 'lodging' : isTransport ? 'transport' : 'place',
-    })
+  }
+  return { label, note, url, kind }
+}
+
+export function parseLocations(cell: string): MapPinLink[] {
+  const list: MapPinLink[] = []
+  let pendingLabel: string | null = null
+
+  for (const raw of cell.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line) {
+      pendingLabel = null
+      continue
+    }
+    const pureUrl = asPureUrl(line)
+    if (pureUrl) {
+      list.push(makePinLink(pendingLabel ?? pureUrl, pureUrl))
+      pendingLabel = null
+      continue
+    }
+    const urls = extractUrlMatches(line)
+    if (!urls.length) {
+      pendingLabel = line
+      continue
+    }
+    pendingLabel = null
+    let pos = 0
+    for (const m of urls) {
+      const prefix = line.slice(pos, m.start).trim()
+      const label = prefix || (urls.length === 1 ? line.slice(m.end).replace(/^[:\-–—\s]+/, '').trim() : '') || m.url
+      list.push(makePinLink(label, m.url))
+      pos = m.end
+    }
   }
   return list
 }
 
 function matchActivityMapUrl(a: Activity, locations: MapPinLink[], cityName: string): string | undefined {
+  const mapLocations = locations.filter((loc) => loc.kind !== 'lodging' && loc.kind !== 'ticket' && loc.kind !== 'link' && isMapsUrl(loc.url))
   if (a.place) {
     const targets = [norm(a.place.name), ...a.place.aliases]
-    const hit = locations.find((loc) => {
-      if (loc.kind === 'lodging') return false
+    const hit = mapLocations.find((loc) => {
       const l = norm(loc.label)
       return targets.some((t) => l === t || (l.length >= 4 && (l.includes(t) || t.includes(l))))
     })
     return hit?.url ?? mapsUrl(`${a.place.name} ${cityName}`)
   }
   const t = norm(stripParens(a.text))
-  const hit = locations.find((loc) => {
+  const hit = mapLocations.find((loc) => {
     const l = norm(loc.label)
     return l.length >= 4 && (t.includes(l) || (t.length >= 5 && l.includes(t)))
   })
@@ -168,9 +204,9 @@ export function extractActivities(text: string, cityKeys: string[], weekday: num
       rest = rest.slice(2)
     }
 
-    // "Lugar: detalle" → el detalle queda como nota del lugar.
+    // "Lugar: detalle" → el detalle queda como nota del lugar (sin cortar "https://").
     let tail = ''
-    const colon = maskParens(rest).search(/(?<!\d):(?!\d)/)
+    const colon = maskParens(rest).search(/(?<!\d):(?!\d|\/\/)/)
     if (colon > 0 && findHits(rest.slice(0, colon), candidates).length) {
       tail = rest.slice(colon + 1)
       rest = rest.slice(0, colon)
@@ -178,7 +214,8 @@ export function extractActivities(text: string, cityKeys: string[], weekday: num
 
     const hits = findHits(rest, candidates)
     const created: Activity[] = []
-    const items = splitOutside(rest, /[,;+]|\s+(?:y|e|o\s+bien)\s+/g, hits.map((h): [number, number] => [h.s, h.e]))
+    const urlKeep = extractUrlMatches(rest).map((u): [number, number] => [u.start, u.end])
+    const items = splitOutside(rest, /[,;+]|\s+(?:y|e|o\s+bien)\s+/g, [...hits.map((h): [number, number] => [h.s, h.e]), ...urlKeep])
     for (const item of items) {
       const end = item.start + item.text.length
       const own = hits.filter((h) => h.s >= item.start && h.e <= end)
@@ -311,9 +348,21 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
   const main = altMatch ? detail.slice(0, altMatch.index) : detail
   const alt = altMatch ? detail.slice((altMatch.index ?? 0) + altMatch[0].length) : ''
 
-  const parts = main.split(/\n+|\s*\|\s*/).map((p) => p.trim()).filter(Boolean)
+  const parts = main.split(/\r?\n+|\s*\|\s*/).map((p) => p.trim()).filter(Boolean)
   const lines: LegLine[] = []
-  for (const p of parts) {
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]
+    const pureUrl = asPureUrl(p)
+    if (pureUrl) {
+      lines.push({ kind: 'link', text: pureUrl, url: pureUrl })
+      continue
+    }
+    const nextUrl = i + 1 < parts.length ? asPureUrl(parts[i + 1]) : null
+    if (nextUrl && isLabelLine(p) && !/→/.test(p) && !/^(escala|total|trayecto\s+casa)/i.test(p)) {
+      lines.push({ kind: 'link', text: p.replace(/:\s*$/, '').trim() || nextUrl, url: nextUrl })
+      i++
+      continue
+    }
     if (/^escala/i.test(p)) lines.push({ kind: 'layover', text: tidy(p) })
     else if (/^total/i.test(p)) lines.push({ kind: 'total', text: tidy(p) })
     else if (/^trayecto\s+casa/i.test(p)) splitSentences(p).forEach((s) => lines.push({ kind: 'note', text: s }))
@@ -321,7 +370,7 @@ function buildLeg(day: LegContext, c: Record<Col, string>): Leg | undefined {
       const sents = splitSentences(p)
       const arrowIdx = sents.findIndex((s) => /→/.test(s))
       const segIdx = arrowIdx >= 0 ? arrowIdx : 0
-      sents.forEach((s, i) => lines.push({ kind: i === segIdx ? 'segment' : 'note', text: s }))
+      sents.forEach((s, k) => lines.push({ kind: k === segIdx ? 'segment' : 'note', text: s }))
     }
   }
 
@@ -705,7 +754,7 @@ export function buildTrip(rows: string[][]): Trip {
       }
     }
 
-    // Vincular ubicaciones de alojamiento de la columna Ubicaciones (Google Maps)
+    // Vincular ubicaciones de alojamiento de la columna Ubicaciones (Google Maps / reserva)
     for (const loc of d.locations) {
       if (loc.kind !== 'lodging') continue
       const key = findCity(loc.label)
@@ -713,11 +762,16 @@ export function buildTrip(rows: string[][]): Trip {
       if (!target) continue
       const isGenericSearch = /^opciones de alojamiento/i.test(loc.label)
       if (!isGenericSearch) {
-        target.mapsUrl ??= loc.url
-        if (target.lodging) {
-          target.lodging.mapsUrl ??= loc.url
+        if (isMapsUrl(loc.url)) {
+          target.mapsUrl ??= loc.url
+          if (target.lodging) {
+            target.lodging.mapsUrl ??= loc.url
+            if (!target.lodging.address && loc.note) target.lodging.address = loc.note
+            if (!target.lodging.address && /Mlynarska\+19/i.test(loc.url)) target.lodging.address = 'ul. Młynarska 19, Wola, Varsovia'
+          }
+        } else if (target.lodging) {
+          target.lodging.url ??= loc.url
           if (!target.lodging.address && loc.note) target.lodging.address = loc.note
-          if (!target.lodging.address && /Mlynarska\+19/i.test(loc.url)) target.lodging.address = 'ul. Młynarska 19, Wola, Varsovia'
         }
       } else {
         target.mapsUrl ??= loc.url

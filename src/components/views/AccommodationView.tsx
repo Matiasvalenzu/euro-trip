@@ -4,7 +4,7 @@ import type { Stay, Trip } from '../../types/travel'
 import { countryOf } from '../../data/destinations'
 import { fmtShort } from '../../lib/dates'
 import { capitalize } from '../../lib/text'
-import { Card, Chip, CopyButton, Empty, Eyebrow, LinkButton, PageTitle, Row } from '../ui'
+import { Card, Chip, CopyButton, Empty, Eyebrow, LinkButton, LinkedText, PageTitle, Row } from '../ui'
 
 function searchLinks(s: Stay) {
   const q = encodeURIComponent(s.city.name)
@@ -93,7 +93,7 @@ function StayCard({ stay }: { stay: Stay }) {
             )}
             {stay.notes.filter((n) => !/^misma (reserva|estad[ií]a)/i.test(n)).map((n, i) => (
               <Row key={i} icon={<Info className="size-4" />} label="Nota">
-                {n}
+                <LinkedText text={n} />
               </Row>
             ))}
           </div>
@@ -134,7 +134,11 @@ function StayCard({ stay }: { stay: Stay }) {
                           )}
                         </span>
                       </div>
-                      {o.detail && <p className="mt-1 text-[13px] leading-snug text-ink-2 break-words">{o.detail}</p>}
+                      {o.detail && (
+                        <p className="mt-1 text-[13px] leading-snug text-ink-2 break-words">
+                          <LinkedText text={o.detail} />
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -149,7 +153,7 @@ function StayCard({ stay }: { stay: Stay }) {
             <div className="mt-1 divide-y divide-line">
               {stay.notes.map((n, i) => (
                 <Row key={i} icon={<Info className="size-4" />} label="Nota">
-                  {n}
+                  <LinkedText text={n} />
                 </Row>
               ))}
             </div>
